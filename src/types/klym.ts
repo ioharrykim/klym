@@ -90,6 +90,7 @@ export interface MotionSignatureData {
   frameCount: number;
   backgroundFrameDataUrls?: string[];
   videoDataUrl?: string;
+  sourceVideoUrl?: string;
   points: MotionPoint[];
   svgPath: string;
   style: MotionSignatureStyle;
@@ -102,7 +103,8 @@ export interface MotionSignatureData {
 
 export type SendCardFormat = 'square' | 'feed-tall' | 'story';
 export type SendCardLayout = 'hero' | 'blueprint' | 'poster';
-export type SendCardBackgroundMode = 'signature' | 'video-frames' | 'photo';
+export type SendCardBackgroundMode = 'signature' | 'video' | 'video-frames' | 'photo';
+export type SendCardTextTone = 'light' | 'dark';
 
 export interface SendCard {
   id: string;
@@ -115,6 +117,7 @@ export interface SendCard {
   reflection: string;
   backgroundMode?: SendCardBackgroundMode;
   customBackgroundDataUrl?: string;
+  textTone?: SendCardTextTone;
 }
 
 export interface ProjectDraft {

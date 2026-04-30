@@ -17,7 +17,7 @@ export function useMotionSignature() {
     };
     const compact = compactSignature(next);
     setSignatures((current) => [compact, ...current]);
-    return compact;
+    return next;
   }
 
   function updateSignature(id: string, patch: Partial<MotionSignatureData>) {
@@ -72,6 +72,6 @@ function compactSignatures(signatures: MotionSignatureData[]) {
 }
 
 function compactSignature(signature: MotionSignatureData): MotionSignatureData {
-  const { videoDataUrl: _videoDataUrl, ...compact } = signature;
+  const { videoDataUrl: _videoDataUrl, sourceVideoUrl: _sourceVideoUrl, ...compact } = signature;
   return compact;
 }

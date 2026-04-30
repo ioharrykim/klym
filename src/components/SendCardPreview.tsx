@@ -5,6 +5,7 @@ import type {
   SendCardBackgroundMode,
   SendCardFormat,
   SendCardLayout,
+  SendCardTextTone,
   MotionSignatureStyle,
 } from '../types/klym';
 import { tokens } from '../lib/tokens';
@@ -19,6 +20,7 @@ interface SendCardPreviewProps {
   reflection: string;
   backgroundMode: SendCardBackgroundMode;
   customBackgroundDataUrl?: string;
+  textTone?: SendCardTextTone;
   hideSignatureLine?: boolean;
   signatureProgress?: number;
 }
@@ -33,6 +35,7 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
     reflection,
     backgroundMode,
     customBackgroundDataUrl,
+    textTone = 'light',
     hideSignatureLine,
     signatureProgress,
   },
@@ -45,7 +48,8 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
       : backgroundMode === 'video-frames'
         ? signature.backgroundFrameDataUrls || []
         : [];
-  const backgroundVideo = backgroundMode === 'video-frames' ? signature.videoDataUrl : '';
+  const backgroundVideo = backgroundMode === 'video' ? signature.sourceVideoUrl || signature.videoDataUrl || '' : '';
+  const signatureInk = textTone === 'dark' ? tokens.ink : tokens.paper;
   const showColorGrade = project.gradeMode === 'color' && Boolean(project.gradeColor);
   const metaGrade = showColorGrade ? `COLOR ${project.gradeColor?.toUpperCase() || ''}`.trim() : project.grade;
   const metaParts = [project.gymName, project.wallName, metaGrade].filter(Boolean) as string[];
@@ -57,7 +61,9 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
         'send-card',
         `send-card-${format}`,
         `send-card-${layout}`,
-        backgroundImages.length ? 'send-card-has-media' : '',
+        `send-card-text-${textTone}`,
+        backgroundVideo || backgroundImages.length ? 'send-card-has-media' : '',
+        backgroundVideo ? 'send-card-has-video' : '',
         hideSignatureLine ? 'send-card-line-hidden' : '',
       ]
         .filter(Boolean)
@@ -71,7 +77,7 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
           style={style}
           animate={false}
           showGrid={false}
-          ink={layout === 'poster' ? tokens.ink : tokens.paper}
+          ink={signatureInk}
           progress={signatureProgress}
         />
       </div>
@@ -104,7 +110,7 @@ function MediaBackground({ images, videoUrl }: { images: string[]; videoUrl?: st
   if (videoUrl) {
     return (
       <div className="send-card-media-bg single">
-        <video src={videoUrl} muted playsInline autoPlay loop />
+        <video src={videoUrl} muted playsInline autoPlay loop aria-hidden="true" />
       </div>
     );
   }

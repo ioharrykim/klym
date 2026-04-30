@@ -10,6 +10,7 @@ import type {
   SendCardBackgroundMode,
   SendCardFormat,
   SendCardLayout,
+  SendCardTextTone,
 } from '../types/klym';
 
 interface SendCardScreenProps {
@@ -38,14 +39,14 @@ export function SendCardScreen({
   const projectSignatures = signatures.filter((signature) => signature.projectId === projectId);
   const firstSignature = initialSignature?.projectId === projectId ? initialSignature : projectSignatures[0];
   const [signatureId, setSignatureId] = useState(firstSignature?.id || '');
-  const signature = signatures.find((item) => item.id === signatureId) || firstSignature;
+  const storedSignature = signatures.find((item) => item.id === signatureId);
+  const signature = initialSignature?.id === signatureId ? initialSignature : storedSignature || firstSignature;
   const [format, setFormat] = useState<SendCardFormat>('square');
   const [layout, setLayout] = useState<SendCardLayout>('hero');
   const [style, setStyle] = useState<MotionSignatureStyle>(signature?.style || 'data');
   const [reflection, setReflection] = useState('Held the swing. Kept the line.');
-  const [backgroundMode, setBackgroundMode] = useState<SendCardBackgroundMode>(
-    signature?.backgroundFrameDataUrls?.length ? 'video-frames' : 'signature',
-  );
+  const [backgroundMode, setBackgroundMode] = useState<SendCardBackgroundMode>(preferredBackgroundMode(signature));
+  const [textTone, setTextTone] = useState<SendCardTextTone>('light');
   const [customBackgroundDataUrl, setCustomBackgroundDataUrl] = useState('');
   const [exporting, setExporting] = useState(false);
   const [videoExporting, setVideoExporting] = useState(false);
@@ -55,8 +56,11 @@ export function SendCardScreen({
 
   const availableSignatures = useMemo(() => {
     if (!project) return [];
-    return signatures.filter((item) => item.projectId === project.id);
-  }, [project, signatures]);
+    const projectItems = signatures.filter((item) => item.projectId === project.id);
+    if (!initialSignature || initialSignature.projectId !== project.id) return projectItems;
+    if (projectItems.some((item) => item.id === initialSignature.id)) return projectItems;
+    return [initialSignature, ...projectItems];
+  }, [initialSignature, project, signatures]);
 
   function persistCard() {
     if (!project || !signature) return;
@@ -69,6 +73,7 @@ export function SendCardScreen({
       reflection,
       backgroundMode,
       customBackgroundDataUrl: backgroundMode === 'photo' ? customBackgroundDataUrl : undefined,
+      textTone,
     });
   }
 
@@ -99,6 +104,8 @@ export function SendCardScreen({
         signature,
         format,
         fileName: `klym-${fileSlug()}-${format}.webm`,
+        backgroundVideoUrl: backgroundMode === 'video' ? getSignatureVideoUrl(signature) : '',
+        textTone,
         onProgress: (phase, progress) => {
           setVideoProgress(progress);
           setVideoStatus(phase === 'preparing' ? 'PREPARING' : phase === 'recording' ? 'RECORDING' : 'ENCODING');
@@ -150,10 +157,13 @@ export function SendCardScreen({
                   value={projectId}
                   onChange={(event) => {
                     setProjectId(event.target.value);
-                    const nextSignature = signatures.find((item) => item.projectId === event.target.value);
+                    const nextSignature =
+                      initialSignature?.projectId === event.target.value
+                        ? initialSignature
+                        : signatures.find((item) => item.projectId === event.target.value);
                     setSignatureId(nextSignature?.id || '');
                     if (nextSignature) setStyle(nextSignature.style);
-                    setBackgroundMode(nextSignature?.backgroundFrameDataUrls?.length ? 'video-frames' : 'signature');
+                    setBackgroundMode(preferredBackgroundMode(nextSignature));
                   }}
                 >
                   {selectableProjects.map((item) => (
@@ -169,10 +179,13 @@ export function SendCardScreen({
                   value={signature.id}
                   onChange={(event) => {
                     setSignatureId(event.target.value);
-                    const next = signatures.find((item) => item.id === event.target.value);
+                    const next =
+                      initialSignature?.id === event.target.value
+                        ? initialSignature
+                        : signatures.find((item) => item.id === event.target.value);
                     if (next) {
                       setStyle(next.style);
-                      setBackgroundMode(next.backgroundFrameDataUrls?.length ? 'video-frames' : 'signature');
+                      setBackgroundMode(preferredBackgroundMode(next));
                     }
                   }}
                 >
@@ -204,6 +217,7 @@ export function SendCardScreen({
                 reflection={reflection}
                 backgroundMode={backgroundMode}
                 customBackgroundDataUrl={customBackgroundDataUrl}
+                textTone={textTone}
               />
             </div>
 
@@ -215,15 +229,24 @@ export function SendCardScreen({
             </div>
 
             <div className="chip-scroll">
-              {(['signature', 'video-frames', 'photo'] as const).map((item) => (
+              {(['video', 'video-frames', 'signature', 'photo'] as const).map((item) => (
                 <button
                   key={item}
                   type="button"
                   data-active={backgroundMode === item}
-                  disabled={item === 'video-frames' && !signature.backgroundFrameDataUrls?.length}
+                  disabled={
+                    (item === 'video' && !getSignatureVideoUrl(signature)) ||
+                    (item === 'video-frames' && !signature.backgroundFrameDataUrls?.length)
+                  }
                   onClick={() => setBackgroundMode(item)}
                 >
-                  {item === 'signature' ? 'GRAPHIC BG' : item === 'video-frames' ? 'VIDEO CUTS' : 'PHOTO BG'}
+                  {item === 'video'
+                    ? 'MOTION VIDEO'
+                    : item === 'signature'
+                      ? 'GRAPHIC BG'
+                      : item === 'video-frames'
+                        ? 'VIDEO CUTS'
+                        : 'PHOTO BG'}
                 </button>
               ))}
             </div>
@@ -255,6 +278,14 @@ export function SendCardScreen({
               {(['dynamic', 'refined', 'editorial', 'data'] as const).map((item) => (
                 <button key={item} type="button" data-active={style === item} onClick={() => setStyle(item)}>
                   {item.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            <div className="chip-scroll chip-scroll-compact">
+              {(['light', 'dark'] as const).map((item) => (
+                <button key={item} type="button" data-active={textTone === item} onClick={() => setTextTone(item)}>
+                  {item === 'light' ? 'TEXT WHITE' : 'TEXT BLACK'}
                 </button>
               ))}
             </div>
@@ -292,4 +323,14 @@ function readImageAsDataUrl(file: File) {
     reader.onerror = () => reject(new Error('Image could not be loaded.'));
     reader.readAsDataURL(file);
   });
+}
+
+function getSignatureVideoUrl(signature?: MotionSignatureData) {
+  return signature?.sourceVideoUrl || signature?.videoDataUrl || '';
+}
+
+function preferredBackgroundMode(signature?: MotionSignatureData): SendCardBackgroundMode {
+  if (getSignatureVideoUrl(signature)) return 'video';
+  if (signature?.backgroundFrameDataUrls?.length) return 'video-frames';
+  return 'signature';
 }

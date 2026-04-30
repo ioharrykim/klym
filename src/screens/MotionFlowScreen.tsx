@@ -53,6 +53,7 @@ export function MotionFlowScreen({
   const [manualPoints, setManualPoints] = useState<Record<string, MotionPoint>>({});
   const [notes, setNotes] = useState<string[]>([]);
   const [error, setError] = useState('');
+  const preserveVideoUrlRef = useRef(false);
 
   useEffect(() => {
     setProjectId(selectedProject?.id || projects[0]?.id || '');
@@ -60,13 +61,14 @@ export function MotionFlowScreen({
 
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      if (previewUrl && !preserveVideoUrlRef.current) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
 
   const manualCount = Object.keys(manualPoints).length;
 
   async function handleFile(file: File) {
+    preserveVideoUrlRef.current = false;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
@@ -114,6 +116,7 @@ export function MotionFlowScreen({
         videoDuration: extracted.duration,
         frameCount: extracted.frames.length,
         backgroundFrameDataUrls: keyFrameDataUrls(extracted.frames),
+        sourceVideoUrl: previewUrl,
         points: composed.points,
         svgPath: composed.svgPath,
         style: signatureStyle,
@@ -165,6 +168,7 @@ export function MotionFlowScreen({
       videoDuration: duration,
       frameCount: frames.length,
       backgroundFrameDataUrls: keyFrameDataUrls(frames),
+      sourceVideoUrl: previewUrl,
       points: composed.points,
       svgPath: composed.svgPath,
       style: signatureStyle,
@@ -257,8 +261,14 @@ export function MotionFlowScreen({
                 quickMode={quickMode}
                 onStyle={updateReadyStyle}
                 onManual={() => setState('failed')}
-                onComplete={() => onComplete({ ...readySignature, style: signatureStyle }, project)}
-                onQuickComplete={(draft) => onQuickComplete?.({ ...readySignature, style: signatureStyle }, draft)}
+                onComplete={() => {
+                  preserveVideoUrlRef.current = true;
+                  onComplete({ ...readySignature, style: signatureStyle }, project);
+                }}
+                onQuickComplete={(draft) => {
+                  preserveVideoUrlRef.current = true;
+                  onQuickComplete?.({ ...readySignature, style: signatureStyle }, draft);
+                }}
               />
             )}
           </>

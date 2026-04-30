@@ -330,9 +330,13 @@ function CruxMark({
   data?: boolean;
   refined?: boolean;
 }) {
+  const labelX = clamp(point.x + 16, 10, VB_W - 46);
+  const labelY = clamp(point.y - 18, 12, VB_H - 10);
+
   if (data) {
     return (
-      <g>
+      <g className="signature-crux-mark">
+        <circle cx={point.x} cy={point.y} r="28" fill={accent} opacity="0.14" filter="url(#klymBlur)" />
         <g stroke={accent} strokeWidth="1" fill="none">
           <path d={`M ${point.x - 18} ${point.y - 12} L ${point.x - 18} ${point.y - 18} L ${point.x - 12} ${point.y - 18}`} />
           <path d={`M ${point.x + 18} ${point.y - 12} L ${point.x + 18} ${point.y - 18} L ${point.x + 12} ${point.y - 18}`} />
@@ -340,8 +344,8 @@ function CruxMark({
           <path d={`M ${point.x + 18} ${point.y + 12} L ${point.x + 18} ${point.y + 18} L ${point.x + 12} ${point.y + 18}`} />
         </g>
         <circle cx={point.x} cy={point.y} r="3" fill={accent} />
-        <line x1={point.x + 18} y1={point.y - 18} x2={point.x + 52} y2={point.y - 30} stroke={accent} strokeWidth="0.6" />
-        <text x={point.x + 54} y={point.y - 31} className="signature-microtext" fill={accent}>
+        <line x1={point.x + 10} y1={point.y - 10} x2={labelX - 4} y2={labelY - 4} stroke={accent} strokeWidth="0.6" />
+        <text x={labelX} y={labelY} className="signature-microtext" fill={accent}>
           CRUX
         </text>
       </g>
@@ -349,17 +353,14 @@ function CruxMark({
   }
 
   return (
-    <g>
+    <g className="signature-crux-mark">
+      <circle cx={point.x} cy={point.y} r={refined ? 22 : 30} fill={accent} opacity={refined ? 0.12 : 0.16} filter="url(#klymBlur)" />
       <circle cx={point.x} cy={point.y} r={refined ? 3.5 : 5} fill={accent} />
       <circle cx={point.x} cy={point.y} r={refined ? 8 : 12} fill="none" stroke={accent} strokeWidth="1" opacity="0.65" />
-      {refined && (
-        <>
-          <line x1={point.x} y1={point.y - 8} x2={point.x} y2={point.y - 23} stroke={accent} strokeWidth="0.6" />
-          <text x={point.x + 5} y={point.y - 25} className="signature-microtext" fill={ink}>
-            CRUX
-          </text>
-        </>
-      )}
+      <line x1={point.x + 7} y1={point.y - 7} x2={labelX - 4} y2={labelY - 4} stroke={accent} strokeWidth="0.6" opacity="0.8" />
+      <text x={labelX} y={labelY} className="signature-microtext" fill={refined ? ink : accent}>
+        CRUX
+      </text>
     </g>
   );
 }
@@ -373,10 +374,27 @@ function maxVelocityPoint(points: MotionPoint[]) {
 
 function activeCruxPoint(points: MotionPoint[], progress?: number) {
   if (!points.length) return undefined;
-  if (progress === undefined) return points[0];
-  return points.reduce<MotionPoint>((closest, point) => {
-    const pointDelta = Math.abs((point.t ?? 0) - progress);
-    const closestDelta = Math.abs((closest.t ?? 0) - progress);
-    return pointDelta < closestDelta ? point : closest;
-  }, points[0]);
+  if (progress === undefined || points.length === 1) return points[0];
+  const sorted = [...points].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+  if (progress <= (sorted[0].t ?? 0)) return sorted[0];
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const current = sorted[index];
+    const next = sorted[index + 1];
+    const currentT = current.t ?? 0;
+    const nextT = next.t ?? 1;
+    if (progress <= nextT) {
+      const eased = easeInOutCubic(clamp((progress - currentT) / Math.max(0.001, nextT - currentT), 0, 1));
+      return {
+        ...next,
+        x: current.x + (next.x - current.x) * eased,
+        y: current.y + (next.y - current.y) * eased,
+        t: progress,
+      };
+    }
+  }
+  return sorted[sorted.length - 1];
+}
+
+function easeInOutCubic(value: number) {
+  return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
 }

@@ -1126,6 +1126,13 @@ button {
   border-color: #ff5a1f;
 }
 
+.chip-scroll button:disabled {
+  color: #4c4f55;
+  border-color: #24262b;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .select-row,
 .builder-controls {
   display: grid;
@@ -2008,6 +2015,20 @@ textarea:focus {
   --muted: rgba(10, 10, 11, 0.5);
 }
 
+.send-card-text-light {
+  color: #f4f1ea;
+  --ink: #f4f1ea;
+  --muted: rgba(244, 241, 234, 0.58);
+  --hairline: rgba(244, 241, 234, 0.2);
+}
+
+.send-card-text-dark {
+  color: #0a0a0b;
+  --ink: #0a0a0b;
+  --muted: rgba(10, 10, 11, 0.56);
+  --hairline: rgba(10, 10, 11, 0.22);
+}
+
 .send-card-blueprint {
   border: 1px solid #2e3035;
 }
@@ -2036,6 +2057,19 @@ textarea:focus {
   filter: grayscale(0.08) contrast(1.06) saturate(0.95);
 }
 
+.send-card-has-video .send-card-media-bg.single video {
+  transform: scale(1.025);
+  animation: klymVideoPresence 7s ease-in-out infinite alternate;
+}
+
+.send-card-media-hidden .send-card-media-bg {
+  display: none !important;
+}
+
+.send-card-export-overlay {
+  background: transparent !important;
+}
+
 .send-card-media-bg.strip {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2052,6 +2086,11 @@ textarea:focus {
 .send-card-has-media .send-card-signature {
   mix-blend-mode: screen;
   filter: drop-shadow(0 0 14px rgba(255, 90, 31, 0.42));
+}
+
+.send-card-text-dark.send-card-has-media .send-card-signature {
+  mix-blend-mode: multiply;
+  filter: drop-shadow(0 0 10px rgba(255, 90, 31, 0.28));
 }
 
 .blueprint-grid {
@@ -2136,6 +2175,11 @@ textarea:focus {
     linear-gradient(180deg, rgba(10, 10, 11, 0.54) 0%, rgba(10, 10, 11, 0) 18%, rgba(10, 10, 11, 0) 60%, rgba(10, 10, 11, 0.86) 100%);
   pointer-events: none;
   z-index: -1;
+}
+
+.send-card-text-dark.send-card-has-media .send-card-chrome::before {
+  background:
+    linear-gradient(180deg, rgba(244, 241, 234, 0.74) 0%, rgba(244, 241, 234, 0.18) 24%, rgba(244, 241, 234, 0.12) 58%, rgba(244, 241, 234, 0.82) 100%);
 }
 
 .send-card-poster.send-card-has-media {
@@ -2238,6 +2282,14 @@ textarea:focus {
 
 .send-card-poster .send-card-reflection {
   color: rgba(10, 10, 11, 0.7);
+}
+
+.send-card-text-light .send-card-reflection {
+  color: rgba(244, 241, 234, 0.88);
+}
+
+.send-card-text-dark .send-card-reflection {
+  color: rgba(10, 10, 11, 0.78);
 }
 
 .send-card-title-row {
@@ -2574,6 +2626,15 @@ textarea:focus {
 @keyframes klymDrawLine {
   to {
     stroke-dashoffset: 0;
+  }
+}
+
+@keyframes klymVideoPresence {
+  from {
+    transform: scale(1.025) translate3d(-0.6%, -0.4%, 0);
+  }
+  to {
+    transform: scale(1.055) translate3d(0.6%, 0.4%, 0);
   }
 }
 

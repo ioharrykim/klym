@@ -1,6 +1,6 @@
 import { toPng, toCanvas } from 'html-to-image';
-import type { MotionPoint, MotionSignatureData, SendCardFormat } from '../../types/klym';
-import { scaledPoints, smoothPath } from '../signature';
+import type { MotionPoint, MotionSignatureData, SendCardFormat, SendCardTextTone } from '../../types/klym';
+import { clamp, scaledPoints, smoothPath } from '../signature';
 
 const SIGNATURE_VB_W = 280;
 const SIGNATURE_VB_H = 380;
@@ -69,6 +69,8 @@ interface VideoExportOptions {
   durationMs?: number;
   holdMs?: number;
   fps?: number;
+  backgroundVideoUrl?: string;
+  textTone?: SendCardTextTone;
   accent?: string;
   ink?: string;
   onProgress?: (phase: 'preparing' | 'recording' | 'encoding', progress: number) => void;
@@ -83,8 +85,10 @@ export async function exportElementAsVideo({
   durationMs = 3200,
   holdMs = 900,
   fps = 60,
+  backgroundVideoUrl,
+  textTone = 'light',
   accent = '#ff5a1f',
-  ink = '#f4f1ea',
+  ink = textTone === 'dark' ? '#0a0a0b' : '#f4f1ea',
   onProgress,
 }: VideoExportOptions) {
   if (typeof MediaRecorder === 'undefined') {
@@ -96,20 +100,23 @@ export async function exportElementAsVideo({
   const { width: targetWidth, height: targetHeight } = formatDimensions(format);
   const sourceRect = element.getBoundingClientRect();
   const renderScale = Math.max(targetWidth / sourceRect.width, targetHeight / sourceRect.height);
+  const backgroundVideo = backgroundVideoUrl ? await prepareBackgroundVideo(backgroundVideoUrl) : undefined;
 
   element.classList.add(hideSignatureClass);
+  if (backgroundVideo) element.classList.add('send-card-media-hidden', 'send-card-export-overlay');
   let rawCanvas: HTMLCanvasElement;
   try {
     rawCanvas = await toCanvas(element, {
       cacheBust: true,
       pixelRatio: renderScale,
-      backgroundColor: '#0A0A0B',
+      backgroundColor: backgroundVideo ? 'transparent' : '#0A0A0B',
     });
   } finally {
     element.classList.remove(hideSignatureClass);
+    element.classList.remove('send-card-media-hidden', 'send-card-export-overlay');
   }
 
-  // Normalize to exact target dimensions (the raw canvas may be sized to natural ratio)
+  // Normalize to exact target dimensions (the raw canvas may be sized to natural ratio).
   const backgroundCanvas = document.createElement('canvas');
   backgroundCanvas.width = targetWidth;
   backgroundCanvas.height = targetHeight;
@@ -130,7 +137,12 @@ export async function exportElementAsVideo({
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
+  if (backgroundVideo) {
+    drawVideoBackground(ctx, backgroundVideo, targetWidth, targetHeight);
+    ctx.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
+  } else {
+    ctx.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
+  }
 
   const stream = recordCanvas.captureStream(fps);
   const mimeCandidates = [
@@ -164,6 +176,10 @@ export async function exportElementAsVideo({
   const points = scaledPoints(signature.points, SIGNATURE_VB_W, SIGNATURE_VB_H);
   const totalDuration = durationMs + holdMs;
 
+  if (backgroundVideo) {
+    backgroundVideo.currentTime = 0;
+    await backgroundVideo.play().catch(() => undefined);
+  }
   recorder.start(200);
   onProgress?.('recording', 0);
 
@@ -174,13 +190,20 @@ export async function exportElementAsVideo({
       const elapsed = performance.now() - start;
       const drawProgress = Math.min(1, elapsed / durationMs);
       ctx!.clearRect(0, 0, targetWidth, targetHeight);
-      ctx!.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
+      if (backgroundVideo) {
+        drawVideoBackground(ctx!, backgroundVideo, targetWidth, targetHeight);
+      } else {
+        ctx!.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
+      }
       drawSignatureProgressive(ctx!, points, drawProgress, {
         targetWidth,
         targetHeight,
         accent,
         ink,
       });
+      if (backgroundVideo) {
+        ctx!.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
+      }
       onProgress?.('recording', Math.min(0.99, elapsed / totalDuration));
       if (elapsed < totalDuration) {
         requestAnimationFrame(frame);
@@ -192,12 +215,78 @@ export async function exportElementAsVideo({
   });
 
   recorder.stop();
+  backgroundVideo?.pause();
   onProgress?.('encoding', 0.98);
 
   const blob = await stopped;
   triggerDownload(blob, fileName);
   onProgress?.('encoding', 1);
   return blob;
+}
+
+async function prepareBackgroundVideo(url: string) {
+  const video = document.createElement('video');
+  video.muted = true;
+  video.playsInline = true;
+  video.loop = true;
+  video.preload = 'auto';
+  video.crossOrigin = 'anonymous';
+  const metadataReady = waitForMedia(video, 'loadedmetadata');
+  video.src = url;
+  video.load();
+  await metadataReady;
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    await waitForMedia(video, 'loadeddata');
+  }
+  return video;
+}
+
+function waitForMedia(video: HTMLVideoElement, eventName: string) {
+  return new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('Source video timed out while preparing export.'));
+    }, 8000);
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      video.removeEventListener(eventName, onEvent);
+      video.removeEventListener('error', onError);
+    };
+    const onEvent = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('Source video could not be prepared for export.'));
+    };
+    video.addEventListener(eventName, onEvent, { once: true });
+    video.addEventListener('error', onError, { once: true });
+  });
+}
+
+function drawVideoBackground(
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  targetWidth: number,
+  targetHeight: number,
+) {
+  ctx.save();
+  ctx.fillStyle = '#0A0A0B';
+  ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+  const videoWidth = video.videoWidth || targetWidth;
+  const videoHeight = video.videoHeight || targetHeight;
+  const scale = Math.max(targetWidth / videoWidth, targetHeight / videoHeight);
+  const drawWidth = videoWidth * scale;
+  const drawHeight = videoHeight * scale;
+  const drawX = (targetWidth - drawWidth) / 2;
+  const drawY = (targetHeight - drawHeight) / 2;
+
+  ctx.filter = 'saturate(0.95) contrast(1.08)';
+  ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
+  ctx.filter = 'none';
+  ctx.restore();
 }
 
 interface DrawOptions {
@@ -276,9 +365,13 @@ function drawSignatureProgressive(
   const head = visiblePoints[0];
   const tail = visiblePoints[visiblePoints.length - 1];
   drawStartMark(ctx, head, ink);
+  const cruxPoints = points.filter((point) => point.dyno);
+  const movingCrux = activeCruxPoint(cruxPoints, progress) || (progress >= 1 ? maxVelocityPoint(points) : undefined);
+  if (movingCrux && progress >= Math.max(0.08, (cruxPoints[0]?.t ?? 0) * 0.8)) {
+    drawCrux(ctx, movingCrux, accent, ink);
+  }
   if (progress >= 1) {
     drawEndMark(ctx, tail, accent);
-    drawCrux(ctx, points.find((point) => point.dyno) || maxVelocityPoint(points), accent);
   } else {
     drawHead(ctx, tail, accent);
   }
@@ -358,19 +451,37 @@ function drawHead(ctx: CanvasRenderingContext2D, point: MotionPoint, accent: str
   ctx.restore();
 }
 
-function drawCrux(ctx: CanvasRenderingContext2D, point: MotionPoint | undefined, accent: string) {
+function drawCrux(ctx: CanvasRenderingContext2D, point: MotionPoint | undefined, accent: string, ink: string) {
   if (!point) return;
+  const labelX = clamp(point.x + 16, 10, SIGNATURE_VB_W - 46);
+  const labelY = clamp(point.y - 17, 12, SIGNATURE_VB_H - 10);
   ctx.save();
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = accent;
+  ctx.globalAlpha = 0.22;
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, 20, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
   ctx.strokeStyle = accent;
   ctx.lineWidth = 0.9;
   ctx.globalAlpha = 0.9;
   ctx.beginPath();
-  ctx.arc(point.x, point.y, 9, 0, Math.PI * 2);
+  ctx.arc(point.x, point.y, 10, 0, Math.PI * 2);
   ctx.stroke();
   ctx.fillStyle = accent;
   ctx.beginPath();
   ctx.arc(point.x, point.y, 2.2, 0, Math.PI * 2);
   ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(point.x + 8, point.y - 8);
+  ctx.lineTo(labelX - 4, labelY - 4);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = ink;
+  ctx.font = '600 6px JetBrains Mono, monospace';
+  ctx.fillText('CRUX', labelX, labelY);
   ctx.restore();
 }
 
@@ -379,6 +490,33 @@ function maxVelocityPoint(points: MotionPoint[]) {
     if (!best || (point.velocity || 0) > (best.velocity || 0)) return point;
     return best;
   }, undefined);
+}
+
+function activeCruxPoint(points: MotionPoint[], progress?: number) {
+  if (!points.length) return undefined;
+  if (progress === undefined || points.length === 1) return points[0];
+  const sorted = [...points].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+  if (progress <= (sorted[0].t ?? 0)) return sorted[0];
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const current = sorted[index];
+    const next = sorted[index + 1];
+    const currentT = current.t ?? 0;
+    const nextT = next.t ?? 1;
+    if (progress <= nextT) {
+      const eased = easeInOutCubic(clamp((progress - currentT) / Math.max(0.001, nextT - currentT), 0, 1));
+      return {
+        ...next,
+        x: current.x + (next.x - current.x) * eased,
+        y: current.y + (next.y - current.y) * eased,
+        t: progress,
+      };
+    }
+  }
+  return sorted[sorted.length - 1];
+}
+
+function easeInOutCubic(value: number) {
+  return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
 }
 
 function triggerDownload(blob: Blob, fileName: string) {
