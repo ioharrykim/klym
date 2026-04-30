@@ -1,6 +1,7 @@
 import { toPng, toCanvas } from 'html-to-image';
+import { ArrayBufferTarget, Muxer } from 'mp4-muxer';
 import type { MotionPoint, MotionSignatureData, SendCardFormat, SendCardTextTone } from '../../types/klym';
-import { clamp, scaledPoints, smoothPath } from '../signature';
+import { clamp, motionPointAtProgress, partialSmoothPath, scaledPoints } from '../signature';
 
 const SIGNATURE_VB_W = 280;
 const SIGNATURE_VB_H = 380;
@@ -76,6 +77,13 @@ interface VideoExportOptions {
   onProgress?: (phase: 'preparing' | 'recording' | 'encoding', progress: number) => void;
 }
 
+interface VideoExportResult {
+  blob: Blob;
+  fileName: string;
+  mimeType: string;
+  delivery: 'shared' | 'downloaded';
+}
+
 export async function exportElementAsVideo({
   element,
   signature,
@@ -90,9 +98,9 @@ export async function exportElementAsVideo({
   accent = '#ff5a1f',
   ink = textTone === 'dark' ? '#0a0a0b' : '#f4f1ea',
   onProgress,
-}: VideoExportOptions) {
-  if (typeof MediaRecorder === 'undefined') {
-    throw new Error('Video export is not supported in this browser.');
+}: VideoExportOptions): Promise<VideoExportResult> {
+  if (typeof MediaRecorder === 'undefined' && (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined')) {
+    throw new Error('Instagram-ready MP4 export is not supported in this browser.');
   }
 
   onProgress?.('preparing', 0.05);
@@ -129,8 +137,12 @@ export async function exportElementAsVideo({
   const bgCtx = backgroundCanvas.getContext('2d');
   if (!bgCtx) throw new Error('Could not create background canvas context.');
   bgCtx.imageSmoothingQuality = 'high';
-  bgCtx.fillStyle = '#0A0A0B';
-  bgCtx.fillRect(0, 0, targetWidth, targetHeight);
+  if (!backgroundVideo) {
+    bgCtx.fillStyle = '#0A0A0B';
+    bgCtx.fillRect(0, 0, targetWidth, targetHeight);
+  } else {
+    bgCtx.clearRect(0, 0, targetWidth, targetHeight);
+  }
   bgCtx.drawImage(rawCanvas, 0, 0, targetWidth, targetHeight);
 
   onProgress?.('preparing', 0.65);
@@ -150,19 +162,45 @@ export async function exportElementAsVideo({
     ctx.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
   }
 
+  const points = scaledPoints(signature.points, SIGNATURE_VB_W, SIGNATURE_VB_H);
+  const videoDurationMs =
+    backgroundVideo && Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0
+      ? Math.min(Math.max(backgroundVideo.duration * 1000, 1400), 30000)
+      : 0;
+  const lineDurationMs = backgroundVideo ? videoDurationMs : durationMs;
+  const totalDuration = backgroundVideo ? videoDurationMs : durationMs + holdMs;
+
+  const mp4Config = await getMp4EncoderConfig(targetWidth, targetHeight, fps).catch(() => null);
+  if (mp4Config) {
+    const outputFileName = withVideoExtension(fileName, 'video/mp4');
+    const blob = await encodeMp4WithWebCodecs({
+      recordCanvas,
+      ctx,
+      backgroundCanvas,
+      backgroundVideo,
+      points,
+      targetWidth,
+      targetHeight,
+      totalDuration,
+      lineDurationMs,
+      fps,
+      accent,
+      ink,
+      encoderConfig: mp4Config,
+      onProgress,
+    });
+    const delivery = await shareOrDownload(blob, outputFileName);
+    onProgress?.('encoding', 1);
+    return { blob, fileName: outputFileName, mimeType: 'video/mp4', delivery };
+  }
+
+  if (typeof MediaRecorder === 'undefined') {
+    throw new Error('Instagram-ready MP4 export is not supported in this browser.');
+  }
+
   const stream = recordCanvas.captureStream(fps);
-  const mimeCandidates = [
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
-    'video/webm',
-    'video/mp4',
-  ];
-  const mimeType = mimeCandidates.find((type) => MediaRecorder.isTypeSupported(type)) || 'video/webm';
-  const recorder = new MediaRecorder(stream, {
-    mimeType,
-    videoBitsPerSecond: 16_000_000,
-  });
+  const { recorder, mimeType } = createVideoRecorder(stream);
+  const outputFileName = withVideoExtension(fileName, mimeType);
   const chunks: BlobPart[] = [];
   recorder.ondataavailable = (event) => {
     if (event.data && event.data.size > 0) chunks.push(event.data);
@@ -171,21 +209,18 @@ export async function exportElementAsVideo({
   const stopped = new Promise<Blob>((resolve, reject) => {
     recorder.onstop = () => {
       try {
-        resolve(new Blob(chunks, { type: mimeType }));
+        const blob = new Blob(chunks, { type: mimeType });
+        if (!blob.size) {
+          reject(new Error('Video encoder returned an empty file. Try exporting again after the preview video has loaded.'));
+          return;
+        }
+        resolve(blob);
       } catch (error) {
         reject(error);
       }
     };
     recorder.onerror = (event) => reject((event as ErrorEvent).error || new Error('MediaRecorder error.'));
   });
-
-  const points = scaledPoints(signature.points, SIGNATURE_VB_W, SIGNATURE_VB_H);
-  const videoDurationMs =
-    backgroundVideo && Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0
-      ? Math.min(Math.max(backgroundVideo.duration * 1000, 1400), 30000)
-      : 0;
-  const lineDurationMs = backgroundVideo ? videoDurationMs : durationMs;
-  const totalDuration = backgroundVideo ? videoDurationMs : durationMs + holdMs;
 
   if (backgroundVideo) {
     backgroundVideo.currentTime = 0;
@@ -208,21 +243,17 @@ export async function exportElementAsVideo({
       const drawProgress = backgroundVideo
         ? videoProgress(backgroundVideo, elapsed, totalDuration)
         : Math.min(1, elapsed / lineDurationMs);
-      ctx!.clearRect(0, 0, targetWidth, targetHeight);
-      if (backgroundVideo) {
-        drawVideoBackground(ctx!, backgroundVideo, targetWidth, targetHeight);
-      } else {
-        ctx!.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
-      }
-      drawSignatureProgressive(ctx!, points, drawProgress, {
+      drawExportFrame({
+        ctx: ctx!,
+        backgroundCanvas,
+        backgroundVideo,
+        points,
         targetWidth,
         targetHeight,
+        drawProgress,
         accent,
         ink,
       });
-      if (backgroundVideo) {
-        ctx!.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
-      }
       onProgress?.('recording', Math.min(0.99, elapsed / totalDuration));
       if (elapsed < totalDuration) {
         requestAnimationFrame(frame);
@@ -235,12 +266,210 @@ export async function exportElementAsVideo({
 
   recorder.stop();
   backgroundVideo?.pause();
+  stream.getTracks().forEach((track) => track.stop());
   onProgress?.('encoding', 0.98);
 
   const blob = await stopped;
-  triggerDownload(blob, fileName);
+  const delivery = await shareOrDownload(blob, outputFileName);
   onProgress?.('encoding', 1);
-  return blob;
+  return { blob, fileName: outputFileName, mimeType, delivery };
+}
+
+interface DrawExportFrameOptions {
+  ctx: CanvasRenderingContext2D;
+  backgroundCanvas: HTMLCanvasElement;
+  backgroundVideo?: HTMLVideoElement;
+  points: MotionPoint[];
+  targetWidth: number;
+  targetHeight: number;
+  drawProgress: number;
+  accent: string;
+  ink: string;
+}
+
+function drawExportFrame({
+  ctx,
+  backgroundCanvas,
+  backgroundVideo,
+  points,
+  targetWidth,
+  targetHeight,
+  drawProgress,
+  accent,
+  ink,
+}: DrawExportFrameOptions) {
+  ctx.clearRect(0, 0, targetWidth, targetHeight);
+  if (backgroundVideo) {
+    drawVideoBackground(ctx, backgroundVideo, targetWidth, targetHeight);
+  } else {
+    ctx.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
+  }
+  drawSignatureProgressive(ctx, points, drawProgress, {
+    targetWidth,
+    targetHeight,
+    accent,
+    ink,
+  });
+  if (backgroundVideo) {
+    ctx.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
+  }
+}
+
+interface Mp4EncodeOptions {
+  recordCanvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  backgroundCanvas: HTMLCanvasElement;
+  backgroundVideo?: HTMLVideoElement;
+  points: MotionPoint[];
+  targetWidth: number;
+  targetHeight: number;
+  totalDuration: number;
+  lineDurationMs: number;
+  fps: number;
+  accent: string;
+  ink: string;
+  encoderConfig: VideoEncoderConfig;
+  onProgress?: VideoExportOptions['onProgress'];
+}
+
+async function encodeMp4WithWebCodecs({
+  recordCanvas,
+  ctx,
+  backgroundCanvas,
+  backgroundVideo,
+  points,
+  targetWidth,
+  targetHeight,
+  totalDuration,
+  lineDurationMs,
+  fps,
+  accent,
+  ink,
+  encoderConfig,
+  onProgress,
+}: Mp4EncodeOptions) {
+  const target = new ArrayBufferTarget();
+  const muxer = new Muxer({
+    target,
+    video: {
+      codec: 'avc',
+      width: targetWidth,
+      height: targetHeight,
+      frameRate: fps,
+    },
+    fastStart: 'in-memory',
+    firstTimestampBehavior: 'strict',
+  });
+  let encoderError: Error | null = null;
+  const encoder = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error: (error) => {
+      encoderError = error;
+    },
+  });
+  encoder.configure(encoderConfig);
+
+  if (backgroundVideo) {
+    await startBackgroundPlayback(backgroundVideo, totalDuration);
+  }
+
+  onProgress?.('recording', 0);
+  const frameCount = Math.max(2, Math.ceil((totalDuration / 1000) * fps));
+  const frameDurationUs = Math.round(1_000_000 / fps);
+  const keyFrameInterval = Math.max(1, Math.round(fps));
+  const start = performance.now();
+
+  for (let frameIndex = 0; frameIndex <= frameCount; frameIndex += 1) {
+    const targetElapsed = Math.min(totalDuration, (frameIndex / fps) * 1000);
+    if (backgroundVideo) {
+      const waitMs = start + targetElapsed - performance.now();
+      if (waitMs > 1) await delay(waitMs);
+    } else if (frameIndex % 8 === 0) {
+      await nextAnimationFrame();
+    }
+
+    const elapsed = backgroundVideo ? Math.min(totalDuration, performance.now() - start) : targetElapsed;
+    const drawProgress = backgroundVideo
+      ? videoProgress(backgroundVideo, elapsed, totalDuration)
+      : Math.min(1, targetElapsed / lineDurationMs);
+
+    drawExportFrame({
+      ctx,
+      backgroundCanvas,
+      backgroundVideo,
+      points,
+      targetWidth,
+      targetHeight,
+      drawProgress,
+      accent,
+      ink,
+    });
+
+    const frame = new VideoFrame(recordCanvas, {
+      timestamp: frameIndex * frameDurationUs,
+      duration: frameDurationUs,
+    });
+    encoder.encode(frame, { keyFrame: frameIndex % keyFrameInterval === 0 });
+    frame.close();
+
+    if (encoderError) throw encoderError;
+    if (encoder.encodeQueueSize > 8) await nextAnimationFrame();
+    onProgress?.('recording', Math.min(0.99, targetElapsed / totalDuration));
+  }
+
+  onProgress?.('encoding', 0.98);
+  await encoder.flush();
+  if (encoderError) throw encoderError;
+  encoder.close();
+  backgroundVideo?.pause();
+  muxer.finalize();
+
+  if (!target.buffer.byteLength) {
+    throw new Error('MP4 encoder returned an empty file. Try exporting again after the preview video has loaded.');
+  }
+
+  return new Blob([target.buffer], { type: 'video/mp4' });
+}
+
+async function getMp4EncoderConfig(width: number, height: number, fps: number): Promise<VideoEncoderConfig | null> {
+  if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') return null;
+
+  const bitrate = Math.min(24_000_000, Math.max(10_000_000, Math.round(width * height * fps * 0.12)));
+  const codecCandidates = [
+    'avc1.42E034',
+    'avc1.4D4034',
+    'avc1.640034',
+    'avc1.42E01F',
+    'avc1.42001F',
+  ];
+
+  for (const codec of codecCandidates) {
+    const config: VideoEncoderConfig = {
+      codec,
+      width,
+      height,
+      bitrate,
+      framerate: fps,
+      hardwareAcceleration: 'prefer-hardware',
+      latencyMode: 'quality',
+      avc: { format: 'avc' },
+    };
+    const support = await VideoEncoder.isConfigSupported(config).catch(() => null);
+    if (support?.supported) return support.config || config;
+  }
+
+  return null;
+}
+
+async function startBackgroundPlayback(video: HTMLVideoElement, totalDuration: number) {
+  video.currentTime = 0;
+  const exportRate = video.duration * 1000 > totalDuration ? video.duration / (totalDuration / 1000) : 1;
+  try {
+    video.playbackRate = Number.isFinite(exportRate) && exportRate > 0 && exportRate <= 16 ? exportRate : 1;
+  } catch {
+    video.playbackRate = 1;
+  }
+  await video.play().catch(() => undefined);
 }
 
 async function prepareBackgroundVideo(url: string) {
@@ -290,6 +519,14 @@ function mediaEventAlreadySatisfied(video: HTMLVideoElement, eventName: string) 
   if (eventName === 'loadedmetadata') return video.readyState >= HTMLMediaElement.HAVE_METADATA;
   if (eventName === 'loadeddata') return video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
   return false;
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+}
+
+function nextAnimationFrame() {
+  return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 function videoProgress(video: HTMLVideoElement, elapsedMs: number, exportDurationMs: number) {
@@ -358,7 +595,11 @@ function drawSignatureProgressive(
     return;
   }
 
-  const path = smoothPath(visiblePoints);
+  const path = partialSmoothPath(points, progress);
+  if (!path) {
+    ctx.restore();
+    return;
+  }
 
   // Glow halo
   ctx.lineCap = 'round';
@@ -405,7 +646,7 @@ function drawSignatureProgressive(
   const tail = visiblePoints[visiblePoints.length - 1];
   drawStartMark(ctx, head, ink);
   const cruxPoints = points.filter((point) => point.dyno);
-  const movingCrux = activeCruxPoint(cruxPoints, progress) || (progress >= 1 ? maxVelocityPoint(points) : undefined);
+  const movingCrux = motionPointAtProgress(points, progress) || (progress >= 1 ? maxVelocityPoint(points) : undefined);
   if (movingCrux && progress >= Math.max(0.08, (cruxPoints[0]?.t ?? 0) * 0.8)) {
     drawCrux(ctx, movingCrux, accent, ink);
   }
@@ -531,33 +772,6 @@ function maxVelocityPoint(points: MotionPoint[]) {
   }, undefined);
 }
 
-function activeCruxPoint(points: MotionPoint[], progress?: number) {
-  if (!points.length) return undefined;
-  if (progress === undefined || points.length === 1) return points[0];
-  const sorted = [...points].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
-  if (progress <= (sorted[0].t ?? 0)) return sorted[0];
-  for (let index = 0; index < sorted.length - 1; index += 1) {
-    const current = sorted[index];
-    const next = sorted[index + 1];
-    const currentT = current.t ?? 0;
-    const nextT = next.t ?? 1;
-    if (progress <= nextT) {
-      const eased = easeInOutCubic(clamp((progress - currentT) / Math.max(0.001, nextT - currentT), 0, 1));
-      return {
-        ...next,
-        x: current.x + (next.x - current.x) * eased,
-        y: current.y + (next.y - current.y) * eased,
-        t: progress,
-      };
-    }
-  }
-  return sorted[sorted.length - 1];
-}
-
-function easeInOutCubic(value: number) {
-  return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
-}
-
 function triggerDownload(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -567,4 +781,67 @@ function triggerDownload(blob: Blob, fileName: string) {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function createVideoRecorder(stream: MediaStream) {
+  const mimeCandidates = [
+    'video/mp4;codecs=avc1.42E01E',
+    'video/mp4;codecs=h264',
+    'video/mp4',
+  ];
+  const supportedTypes = mimeCandidates.filter((type) => MediaRecorder.isTypeSupported(type));
+  if (!supportedTypes.length) throw new Error('Instagram-ready MP4 export is not supported in this browser.');
+
+  for (const mimeType of supportedTypes) {
+    try {
+      return {
+        recorder: new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 16_000_000,
+        }),
+        mimeType,
+      };
+    } catch {
+      /* try the next encoder */
+    }
+  }
+
+  throw new Error('Instagram-ready MP4 export is not supported in this browser.');
+}
+
+function withVideoExtension(fileName: string, mimeType: string) {
+  const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+  return fileName.replace(/\.(webm|mp4)$/i, `.${extension}`);
+}
+
+async function shareOrDownload(blob: Blob, fileName: string): Promise<'shared' | 'downloaded'> {
+  const file = new File([blob], fileName, { type: blob.type || 'video/mp4' });
+  const nav = navigator as Navigator & {
+    canShare?: (data: ShareData) => boolean;
+    share?: (data: ShareData) => Promise<void>;
+  };
+
+  if (isTouchDevice() && nav.share && (!nav.canShare || nav.canShare({ files: [file] }))) {
+    try {
+      await nav.share({
+        files: [file],
+        title: 'KLYM send card',
+      });
+      return 'shared';
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new Error('Share cancelled.');
+      }
+    }
+  }
+
+  triggerDownload(blob, fileName);
+  return 'downloaded';
+}
+
+function isTouchDevice() {
+  return (
+    (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ||
+    navigator.maxTouchPoints > 1
+  );
 }

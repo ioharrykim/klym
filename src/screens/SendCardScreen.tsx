@@ -99,11 +99,11 @@ export function SendCardScreen({
     setVideoStatus('PREPARING');
     persistCard();
     try {
-      await exportElementAsVideo({
+      const result = await exportElementAsVideo({
         element: cardRef.current,
         signature,
         format,
-        fileName: `klym-${fileSlug()}-${format}.webm`,
+        fileName: `klym-${fileSlug()}-${format}.mp4`,
         backgroundVideoUrl: backgroundMode === 'video' ? getSignatureVideoUrl(signature) : '',
         textTone,
         onProgress: (phase, progress) => {
@@ -111,7 +111,7 @@ export function SendCardScreen({
           setVideoStatus(phase === 'preparing' ? 'PREPARING' : phase === 'recording' ? 'RECORDING' : 'ENCODING');
         },
       });
-      setVideoStatus('SAVED');
+      setVideoStatus(result.delivery === 'shared' ? 'SHARED' : `SAVED ${result.fileName.split('.').pop()?.toUpperCase() || 'VIDEO'}`);
     } catch (error) {
       console.error(error);
       setVideoStatus(error instanceof Error ? error.message.toUpperCase() : 'EXPORT FAILED');
@@ -295,7 +295,7 @@ export function SendCardScreen({
                 {exporting ? 'EXPORTING' : 'EXPORT PNG'}
               </KButton>
               <KButton icon="video" onClick={exportVideo} disabled={exporting || videoExporting}>
-                {videoExporting ? 'CAPTURING' : 'EXPORT VIDEO'}
+                {videoExporting ? 'CAPTURING' : 'SAVE VIDEO'}
               </KButton>
             </div>
             {(videoExporting || videoStatus) && (

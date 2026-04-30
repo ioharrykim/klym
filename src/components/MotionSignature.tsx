@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { MotionSignatureData, MotionSignatureStyle, MotionPoint } from '../types/klym';
-import { clamp, generateSeedPath, scaledPoints, smoothPath } from '../lib/signature';
+import { clamp, generateSeedPath, motionPointAtProgress, scaledPoints, smoothPath } from '../lib/signature';
 import { tokens } from '../lib/tokens';
 
 const VB_W = 280;
@@ -37,7 +37,7 @@ export function MotionSignature({
   const points = data ? scaledPoints(data.points, VB_W, VB_H) : seedPath?.points || [];
   const path = data ? data.svgPath : smoothPath(points);
   const cruxPoints = points.filter((point) => point.dyno);
-  const cruxPoint = activeCruxPoint(cruxPoints, progress) || cruxPoints[0] || maxVelocityPoint(points);
+  const cruxPoint = activeSpotlightPoint(points, cruxPoints, progress);
   const minorPoint = points.find((point) => 'minor' in point && point.minor);
   const baseStroke = 2.4 * strokeScale;
 
@@ -391,29 +391,7 @@ function maxVelocityPoint(points: MotionPoint[]) {
   }, undefined);
 }
 
-function activeCruxPoint(points: MotionPoint[], progress?: number) {
-  if (!points.length) return undefined;
-  if (progress === undefined || points.length === 1) return points[0];
-  const sorted = [...points].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
-  if (progress <= (sorted[0].t ?? 0)) return sorted[0];
-  for (let index = 0; index < sorted.length - 1; index += 1) {
-    const current = sorted[index];
-    const next = sorted[index + 1];
-    const currentT = current.t ?? 0;
-    const nextT = next.t ?? 1;
-    if (progress <= nextT) {
-      const eased = easeInOutCubic(clamp((progress - currentT) / Math.max(0.001, nextT - currentT), 0, 1));
-      return {
-        ...next,
-        x: current.x + (next.x - current.x) * eased,
-        y: current.y + (next.y - current.y) * eased,
-        t: progress,
-      };
-    }
-  }
-  return sorted[sorted.length - 1];
-}
-
-function easeInOutCubic(value: number) {
-  return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
+function activeSpotlightPoint(points: MotionPoint[], cruxPoints: MotionPoint[], progress?: number) {
+  if (progress !== undefined) return motionPointAtProgress(points, progress) || cruxPoints[0] || maxVelocityPoint(points);
+  return cruxPoints[0] || maxVelocityPoint(points);
 }

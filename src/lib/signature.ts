@@ -93,6 +93,71 @@ export function smoothPath(points: Pick<MotionPoint, 'x' | 'y'>[]) {
   return d;
 }
 
+export function partialSmoothPath(points: MotionPoint[], progress: number) {
+  if (points.length < 2) return '';
+  const clampedProgress = clamp(progress, 0, 1);
+  const firstT = pointTime(points[0], 0, points.length);
+  if (clampedProgress <= firstT) return '';
+
+  let d = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+    const startT = pointTime(p1, i, points.length);
+    const endT = pointTime(p2, i + 1, points.length);
+    const controls = cubicControls(p0, p1, p2, p3);
+
+    if (clampedProgress >= endT || i === points.length - 2) {
+      if (clampedProgress >= endT) {
+        d += cubicSegment(controls.cp1, controls.cp2, p2);
+        continue;
+      }
+    }
+
+    if (clampedProgress > startT && clampedProgress < endT) {
+      const local = clamp((clampedProgress - startT) / Math.max(0.0001, endT - startT));
+      const split = splitCubic(p1, controls.cp1, controls.cp2, p2, local);
+      d += cubicSegment(split.cp1, split.cp2, split.end);
+    }
+    break;
+  }
+  return d;
+}
+
+export function motionPointAtProgress(points: MotionPoint[], progress: number): MotionPoint | undefined {
+  if (!points.length) return undefined;
+  if (points.length === 1) return points[0];
+
+  const clampedProgress = clamp(progress, 0, 1);
+  const firstT = pointTime(points[0], 0, points.length);
+  if (clampedProgress <= firstT) return points[0];
+
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const startT = pointTime(p1, i, points.length);
+    const endT = pointTime(p2, i + 1, points.length);
+    if (clampedProgress <= endT || i === points.length - 2) {
+      const local = clamp((clampedProgress - startT) / Math.max(0.0001, endT - startT));
+      const p0 = points[i - 1] || p1;
+      const p3 = points[i + 2] || p2;
+      const controls = cubicControls(p0, p1, p2, p3);
+      const current = cubicPoint(p1, controls.cp1, controls.cp2, p2, local);
+      return {
+        ...p2,
+        x: current.x,
+        y: current.y,
+        t: clampedProgress,
+        velocity: p1.velocity ?? p2.velocity,
+      };
+    }
+  }
+
+  return points[points.length - 1];
+}
+
 export function scaledPoints(points: MotionPoint[], width = 280, height = 380): MotionPoint[] {
   return points.map((point) => ({
     ...point,
@@ -136,4 +201,81 @@ export function signaturePathFromNormalized(points: MotionPoint[], width = 280, 
 
 export function clamp(value: number, min = 0, max = 1) {
   return Math.max(min, Math.min(max, value));
+}
+
+function pointTime(point: Pick<MotionPoint, 't'>, index: number, count: number) {
+  return Number.isFinite(point.t) ? point.t : index / Math.max(1, count - 1);
+}
+
+function cubicControls(
+  p0: Pick<MotionPoint, 'x' | 'y'>,
+  p1: Pick<MotionPoint, 'x' | 'y'>,
+  p2: Pick<MotionPoint, 'x' | 'y'>,
+  p3: Pick<MotionPoint, 'x' | 'y'>,
+) {
+  return {
+    cp1: {
+      x: p1.x + (p2.x - p0.x) / 6,
+      y: p1.y + (p2.y - p0.y) / 6,
+    },
+    cp2: {
+      x: p2.x - (p3.x - p1.x) / 6,
+      y: p2.y - (p3.y - p1.y) / 6,
+    },
+  };
+}
+
+function cubicSegment(
+  cp1: Pick<MotionPoint, 'x' | 'y'>,
+  cp2: Pick<MotionPoint, 'x' | 'y'>,
+  end: Pick<MotionPoint, 'x' | 'y'>,
+) {
+  return ` C ${cp1.x.toFixed(2)} ${cp1.y.toFixed(2)}, ${cp2.x.toFixed(2)} ${cp2.y.toFixed(
+    2,
+  )}, ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
+}
+
+function splitCubic(
+  p0: Pick<MotionPoint, 'x' | 'y'>,
+  p1: Pick<MotionPoint, 'x' | 'y'>,
+  p2: Pick<MotionPoint, 'x' | 'y'>,
+  p3: Pick<MotionPoint, 'x' | 'y'>,
+  t: number,
+) {
+  const p01 = lerpPoint(p0, p1, t);
+  const p12 = lerpPoint(p1, p2, t);
+  const p23 = lerpPoint(p2, p3, t);
+  const p012 = lerpPoint(p01, p12, t);
+  const p123 = lerpPoint(p12, p23, t);
+  const end = lerpPoint(p012, p123, t);
+  return { cp1: p01, cp2: p012, end };
+}
+
+function cubicPoint(
+  p0: Pick<MotionPoint, 'x' | 'y'>,
+  p1: Pick<MotionPoint, 'x' | 'y'>,
+  p2: Pick<MotionPoint, 'x' | 'y'>,
+  p3: Pick<MotionPoint, 'x' | 'y'>,
+  t: number,
+) {
+  const oneMinusT = 1 - t;
+  const a = oneMinusT ** 3;
+  const b = 3 * oneMinusT ** 2 * t;
+  const c = 3 * oneMinusT * t ** 2;
+  const d = t ** 3;
+  return {
+    x: p0.x * a + p1.x * b + p2.x * c + p3.x * d,
+    y: p0.y * a + p1.y * b + p2.y * c + p3.y * d,
+  };
+}
+
+function lerpPoint(
+  a: Pick<MotionPoint, 'x' | 'y'>,
+  b: Pick<MotionPoint, 'x' | 'y'>,
+  t: number,
+) {
+  return {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+  };
 }

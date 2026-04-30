@@ -122,8 +122,9 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
             <span
               className={showColorGrade ? 'send-card-grade-pill is-color' : 'send-card-grade-pill'}
               style={showColorGrade ? ({ '--grade-color': project.gradeColor } as CSSProperties) : undefined}
+              aria-label={showColorGrade ? 'Color grade' : undefined}
             >
-              {showColorGrade ? 'COLOR' : project.grade}
+              {showColorGrade ? '' : project.grade}
             </span>
             <span>{(signature.analysisMethod || signature.sourceType).toUpperCase()}</span>
           </div>

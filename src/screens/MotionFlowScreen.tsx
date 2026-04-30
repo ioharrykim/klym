@@ -86,10 +86,11 @@ export function MotionFlowScreen({
     try {
       setState('extracting-frames');
       const extracted = await extractFramesFromVideo(selectedFile, {
-        count: 18,
-        maxWidth: 512,
-        trimStartRatio: 0.06,
-        trimEndRatio: 0.94,
+        count: 32,
+        maxWidth: 640,
+        quality: 0.82,
+        trimStartRatio: 0.02,
+        trimEndRatio: 0.98,
         onProgress: (value) => setProgress(Math.round(value * 40)),
       });
       URL.revokeObjectURL(extracted.videoUrl);
@@ -98,7 +99,7 @@ export function MotionFlowScreen({
 
       setState('detecting-motion');
       setProgress(56);
-      const detection = await detectMotionFromFrames(extracted.frames);
+      const detection = await detectMotionFromFrames(extracted.frames, extracted.duration);
       setNotes(detection.notes);
       setProgress(76);
 
@@ -143,7 +144,7 @@ export function MotionFlowScreen({
       [frame.id]: {
         x,
         y,
-        t: frames.length <= 1 ? 0 : frame.index / (frames.length - 1),
+        t: duration > 0 ? Math.max(0, Math.min(1, frame.time / duration)) : frames.length <= 1 ? 0 : frame.index / (frames.length - 1),
         confidence: 1,
         manual: true,
       },
@@ -301,10 +302,11 @@ function UploadStep({
             : 'Your movement becomes a unique continuous line. Automatic detection runs first; manual correction is available if confidence drops.'}
         </p>
       </div>
-      <label className="video-drop">
+      <label className={previewUrl ? 'video-drop has-preview' : 'video-drop'}>
         <input
           type="file"
-          accept="video/mp4,video/quicktime,video/*"
+          accept="video/*,.mp4,.mov,.m4v"
+          aria-label="Select a send video from your photo library"
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) onFile(file);

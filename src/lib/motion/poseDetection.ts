@@ -2,6 +2,7 @@ import { FilesetResolver, PoseLandmarker, type NormalizedLandmark } from '@media
 import type { MotionFrame, MotionPoint } from '../../types/klym';
 import { normalizeDetectedPoints } from './normalize';
 import { confidenceFromPoints } from './path';
+import { clamp } from '../signature';
 
 export interface DetectionResult {
   points: MotionPoint[];
@@ -17,7 +18,10 @@ interface DetectionSample {
   confidence: number;
 }
 
-export async function detectMotionFromFrames(frames: MotionFrame[]): Promise<DetectionResult> {
+export async function detectMotionFromFrames(
+  frames: MotionFrame[],
+  videoDuration = inferDuration(frames),
+): Promise<DetectionResult> {
   if (frames.length < 3) {
     return {
       points: [],
@@ -28,10 +32,10 @@ export async function detectMotionFromFrames(frames: MotionFrame[]): Promise<Det
     };
   }
 
-  const poseResult = await detectPosePath(frames);
+  const poseResult = await detectPosePath(frames, videoDuration);
   if (poseResult && !poseResult.failed) return poseResult;
 
-  const pixelResult = await detectPixelMotionPath(frames);
+  const pixelResult = await detectPixelMotionPath(frames, videoDuration);
   return {
     ...pixelResult,
     failed: pixelResult.failed,
@@ -42,30 +46,33 @@ export async function detectMotionFromFrames(frames: MotionFrame[]): Promise<Det
   };
 }
 
-async function detectPosePath(frames: MotionFrame[]): Promise<DetectionResult | null> {
+async function detectPosePath(frames: MotionFrame[], videoDuration: number): Promise<DetectionResult | null> {
   try {
     const landmarker = await getPoseLandmarker();
     const bitmaps = await Promise.all(frames.map((frame) => decodeFrame(frame.dataUrl)));
     const rawPoints: MotionPoint[] = [];
     let hitCount = 0;
+    let lastTimestampMs = -1;
 
     for (let index = 0; index < bitmaps.length; index += 1) {
       const frame = frames[index];
-      const result = landmarker.detect(bitmaps[index]);
+      const timestampMs = Math.max(lastTimestampMs + 1, Math.round(frame.time * 1000));
+      lastTimestampMs = timestampMs;
+      const result = landmarker.detectForVideo(bitmaps[index], timestampMs);
       const pose = result.landmarks[0];
       const center = pose ? poseCenter(pose) : null;
       if (center) hitCount += 1;
       rawPoints.push({
         x: (center?.x ?? 0.5) * frame.width,
         y: (center?.y ?? 0.62) * frame.height,
-        t: frames.length === 1 ? 0 : index / (frames.length - 1),
+        t: frameProgress(frame, index, frames, videoDuration),
         confidence: center?.confidence ?? 0,
       });
     }
 
     closeBitmaps(bitmaps);
 
-    const interpolatedPoints = interpolateLowConfidencePoints(rawPoints);
+    const interpolatedPoints = stabilizePosePoints(interpolateLowConfidencePoints(rawPoints));
     const normalized = normalizeDetectedPoints(interpolatedPoints, frames[0].width, frames[0].height);
     const poseCoverage = hitCount / frames.length;
     const confidenceScore = Number(
@@ -80,10 +87,10 @@ async function detectPosePath(frames: MotionFrame[]): Promise<DetectionResult | 
       method: 'pose',
       notes: [
         `MediaPipe pose detection found a climber in ${hitCount}/${frames.length} sampled frames.`,
-        'Low-confidence pose frames are interpolated from adjacent reliable body-center points.',
+        'Low-confidence pose frames are interpolated from adjacent reliable body-center points and aligned to source-video timestamps.',
         failed
           ? 'Pose confidence was too low for a reliable signature; falling back to pixel motion or manual correction.'
-          : 'Automatic detection used pose landmarks: hips, shoulders, wrists, and ankles.',
+          : 'Automatic detection used video-mode pose tracking across hips, shoulders, elbows, wrists, knees, and ankles.',
       ],
     };
   } catch (error) {
@@ -133,7 +140,24 @@ function interpolateLowConfidencePoints(points: MotionPoint[]) {
   });
 }
 
-async function detectPixelMotionPath(frames: MotionFrame[]): Promise<DetectionResult> {
+function stabilizePosePoints(points: MotionPoint[]) {
+  if (points.length < 3) return points;
+  return points.map((point, index) => {
+    if (index === 0 || index === points.length - 1 || point.manual) return point;
+    const prev = points[index - 1];
+    const next = points[index + 1];
+    const confidence = point.confidence ?? 0;
+    const centerWeight = confidence >= 0.5 ? 0.68 : 0.54;
+    const sideWeight = (1 - centerWeight) / 2;
+    return {
+      ...point,
+      x: point.x * centerWeight + prev.x * sideWeight + next.x * sideWeight,
+      y: point.y * centerWeight + prev.y * sideWeight + next.y * sideWeight,
+    };
+  });
+}
+
+async function detectPixelMotionPath(frames: MotionFrame[], videoDuration: number): Promise<DetectionResult> {
   const bitmaps = await Promise.all(frames.map((frame) => decodeFrame(frame.dataUrl)));
   const sampleWidth = 144;
   const sampleHeight = Math.max(96, Math.round(sampleWidth * (frames[0].height / frames[0].width)));
@@ -174,7 +198,7 @@ async function detectPixelMotionPath(frames: MotionFrame[]): Promise<DetectionRe
     return {
       x: (x / sampleWidth) * frame.width,
       y: (y / sampleHeight) * frame.height,
-      t: frames.length === 1 ? 0 : index / (frames.length - 1),
+      t: frameProgress(frame, index, frames, videoDuration),
       confidence,
     };
   });
@@ -207,11 +231,11 @@ function getPoseLandmarker() {
         modelAssetPath: '/models/pose_landmarker_full.task',
         delegate: 'CPU',
       },
-      runningMode: 'IMAGE',
+      runningMode: 'VIDEO',
       numPoses: 1,
-      minPoseDetectionConfidence: 0.35,
-      minPosePresenceConfidence: 0.35,
-      minTrackingConfidence: 0.35,
+      minPoseDetectionConfidence: 0.28,
+      minPosePresenceConfidence: 0.28,
+      minTrackingConfidence: 0.22,
     });
   })();
   return poseLandmarkerPromise;
@@ -223,8 +247,12 @@ function poseCenter(landmarks: NormalizedLandmark[]) {
     { index: 24, weight: 1.2 },
     { index: 11, weight: 0.75 },
     { index: 12, weight: 0.75 },
+    { index: 13, weight: 0.36 },
+    { index: 14, weight: 0.36 },
     { index: 15, weight: 0.42 },
     { index: 16, weight: 0.42 },
+    { index: 25, weight: 0.34 },
+    { index: 26, weight: 0.34 },
     { index: 27, weight: 0.34 },
     { index: 28, weight: 0.34 },
   ];
@@ -294,6 +322,20 @@ function diffCenter(
 
 function luminance(r: number, g: number, b: number) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function frameProgress(
+  frame: MotionFrame,
+  index: number,
+  frames: MotionFrame[],
+  videoDuration: number,
+) {
+  if (Number.isFinite(videoDuration) && videoDuration > 0) return clamp(frame.time / videoDuration, 0, 1);
+  return frames.length === 1 ? 0 : index / (frames.length - 1);
+}
+
+function inferDuration(frames: MotionFrame[]) {
+  return frames.reduce((max, frame) => Math.max(max, frame.time), 0);
 }
 
 async function decodeFrame(dataUrl: string) {
