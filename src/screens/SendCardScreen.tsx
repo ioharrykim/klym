@@ -81,7 +81,7 @@ export function SendCardScreen({
     setExporting(true);
     persistCard();
     try {
-      await exportElementAsPng(cardRef.current, `klym-${fileSlug()}-${format}.png`);
+      await exportElementAsPng(cardRef.current, `klym-${fileSlug()}-${format}.png`, format);
     } finally {
       setExporting(false);
     }

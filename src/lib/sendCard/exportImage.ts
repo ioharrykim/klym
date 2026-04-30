@@ -16,7 +16,38 @@ export function formatDimensions(format: SendCardFormat): { width: number; heigh
   }
 }
 
-export async function exportElementAsPng(element: HTMLElement, fileName: string) {
+export async function exportElementAsPng(
+  element: HTMLElement,
+  fileName: string,
+  format?: SendCardFormat,
+) {
+  if (format) {
+    const { width, height } = formatDimensions(format);
+    const sourceRect = element.getBoundingClientRect();
+    const renderScale = Math.max(width / sourceRect.width, height / sourceRect.height);
+    const rawCanvas = await toCanvas(element, {
+      cacheBust: true,
+      pixelRatio: renderScale,
+      backgroundColor: '#0A0A0B',
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not create canvas context.');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#0A0A0B';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(rawCanvas, 0, 0, width, height);
+    const blob = await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (result) => (result ? resolve(result) : reject(new Error('PNG encoding failed.'))),
+        'image/png',
+      ),
+    );
+    triggerDownload(blob, fileName);
+    return URL.createObjectURL(blob);
+  }
   const dataUrl = await toPng(element, {
     cacheBust: true,
     pixelRatio: 4,

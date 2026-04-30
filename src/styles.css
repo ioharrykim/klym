@@ -1989,13 +1989,13 @@ textarea:focus {
 .send-card-feed-tall {
   width: 320px;
   height: 400px;
-  --card-pad: 15px;
+  --card-pad: 16px;
   --display-size: 13px;
 }
 
 .send-card-story {
-  width: 230px;
-  height: 410px;
+  width: 240px;
+  height: 426px;
   --card-pad: 14px;
   --display-size: 12px;
 }
