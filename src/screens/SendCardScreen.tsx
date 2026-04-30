@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { SendCardPreview } from '../components/SendCardPreview';
 import { EmptyState, Icon, KButton } from '../components/UI';
-import { exportElementAsPng } from '../lib/sendCard/exportImage';
+import { exportElementAsPng, exportElementAsVideo } from '../lib/sendCard/exportImage';
 import type {
   MotionSignatureData,
   MotionSignatureStyle,
@@ -48,6 +48,9 @@ export function SendCardScreen({
   );
   const [customBackgroundDataUrl, setCustomBackgroundDataUrl] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [videoExporting, setVideoExporting] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoStatus, setVideoStatus] = useState('');
   const cardRef = useRef<HTMLDivElement>(null);
 
   const availableSignatures = useMemo(() => {
@@ -55,9 +58,8 @@ export function SendCardScreen({
     return signatures.filter((item) => item.projectId === project.id);
   }, [project, signatures]);
 
-  async function exportCard() {
-    if (!cardRef.current || !project || !signature) return;
-    setExporting(true);
+  function persistCard() {
+    if (!project || !signature) return;
     onSaveCard({
       projectId: project.id,
       signatureId: signature.id,
@@ -68,10 +70,50 @@ export function SendCardScreen({
       backgroundMode,
       customBackgroundDataUrl: backgroundMode === 'photo' ? customBackgroundDataUrl : undefined,
     });
+  }
+
+  function fileSlug() {
+    return project ? project.displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'klym';
+  }
+
+  async function exportCard() {
+    if (!cardRef.current || !project || !signature) return;
+    setExporting(true);
+    persistCard();
     try {
-      await exportElementAsPng(cardRef.current, `klym-${project.displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${format}.png`);
+      await exportElementAsPng(cardRef.current, `klym-${fileSlug()}-${format}.png`);
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function exportVideo() {
+    if (!cardRef.current || !project || !signature) return;
+    setVideoExporting(true);
+    setVideoProgress(0);
+    setVideoStatus('PREPARING');
+    persistCard();
+    try {
+      await exportElementAsVideo({
+        element: cardRef.current,
+        signature,
+        format,
+        fileName: `klym-${fileSlug()}-${format}.webm`,
+        onProgress: (phase, progress) => {
+          setVideoProgress(progress);
+          setVideoStatus(phase === 'preparing' ? 'PREPARING' : phase === 'recording' ? 'RECORDING' : 'ENCODING');
+        },
+      });
+      setVideoStatus('SAVED');
+    } catch (error) {
+      console.error(error);
+      setVideoStatus(error instanceof Error ? error.message.toUpperCase() : 'EXPORT FAILED');
+    } finally {
+      setVideoExporting(false);
+      window.setTimeout(() => {
+        setVideoStatus('');
+        setVideoProgress(0);
+      }, 2400);
     }
   }
 
@@ -218,13 +260,24 @@ export function SendCardScreen({
             </div>
 
             <div className="export-actions">
-              <KButton variant="ghost" icon="share">
-                PREVIEW
-              </KButton>
-              <KButton icon="download" onClick={exportCard} disabled={exporting}>
+              <KButton variant="ghost" icon="download" onClick={exportCard} disabled={exporting || videoExporting}>
                 {exporting ? 'EXPORTING' : 'EXPORT PNG'}
               </KButton>
+              <KButton icon="video" onClick={exportVideo} disabled={exporting || videoExporting}>
+                {videoExporting ? 'CAPTURING' : 'EXPORT VIDEO'}
+              </KButton>
             </div>
+            {(videoExporting || videoStatus) && (
+              <div className="video-export-status">
+                <div className="video-export-status-row">
+                  <span>{videoStatus}</span>
+                  <b>{Math.round(videoProgress * 100)}%</b>
+                </div>
+                <div className="video-export-bar">
+                  <i style={{ width: `${Math.round(videoProgress * 100)}%` }} />
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

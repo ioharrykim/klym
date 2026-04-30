@@ -19,10 +19,23 @@ interface SendCardPreviewProps {
   reflection: string;
   backgroundMode: SendCardBackgroundMode;
   customBackgroundDataUrl?: string;
+  hideSignatureLine?: boolean;
+  signatureProgress?: number;
 }
 
 export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(function SendCardPreview(
-  { project, signature, format, layout, style, reflection, backgroundMode, customBackgroundDataUrl },
+  {
+    project,
+    signature,
+    format,
+    layout,
+    style,
+    reflection,
+    backgroundMode,
+    customBackgroundDataUrl,
+    hideSignatureLine,
+    signatureProgress,
+  },
   ref,
 ) {
   const sentDate = formatDate(project.sentAt || project.updatedAt);
@@ -32,37 +45,52 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
       : backgroundMode === 'video-frames'
         ? signature.backgroundFrameDataUrls || []
         : [];
+  const metaParts = [project.gymName, project.wallName, project.grade, `${project.attemptsCount}T`];
+  if (project.sentAt) metaParts.push(`${projectDuration(project)}D`);
   return (
     <div
       ref={ref}
-      className={`send-card send-card-${format} send-card-${layout} ${backgroundImages.length ? 'send-card-has-media' : ''}`}
+      className={[
+        'send-card',
+        `send-card-${format}`,
+        `send-card-${layout}`,
+        backgroundImages.length ? 'send-card-has-media' : '',
+        hideSignatureLine ? 'send-card-line-hidden' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
       {backgroundImages.length > 0 && <MediaBackground images={backgroundImages} />}
       {layout === 'blueprint' && <BlueprintGrid />}
       <div className="send-card-signature">
-        <MotionSignature data={{ ...signature, style }} style={style} animate={false} showGrid={layout !== 'poster'} ink={layout === 'poster' ? tokens.ink : tokens.paper} />
+        <MotionSignature
+          data={{ ...signature, style }}
+          style={style}
+          animate={false}
+          showGrid={false}
+          ink={layout === 'poster' ? tokens.ink : tokens.paper}
+          progress={signatureProgress}
+        />
       </div>
+      <div className="send-card-frame" aria-hidden />
       <div className="send-card-chrome">
         <div className="send-card-top">
-          <div>
+          <div className="send-card-mark">
             <strong>KLYM</strong>
-            <span>SENT · {sentDate}</span>
+            <span>{sentDate}</span>
           </div>
-          <b>{project.grade}</b>
+          <span className="send-card-grade">{project.grade}</span>
         </div>
         <div className="send-card-bottom">
-          <p>{reflection || 'A line worth keeping.'}</p>
-          <h2>{project.displayName}</h2>
-          {project.localName && <h3>{project.localName}</h3>}
-          <div className="send-card-meta">
-            <span>{project.gymName}</span>
-            <span>{project.wallName}</span>
-            <span>{project.grade}</span>
-            <span>{project.attemptsCount} TRIES</span>
-            {project.sentAt && <span>{projectDuration(project)} DAYS</span>}
+          {reflection && <p className="send-card-reflection">"{reflection}"</p>}
+          <div className="send-card-title-row">
+            <h2>{project.displayName}</h2>
+            {project.localName && <h3>{project.localName}</h3>}
           </div>
+          <div className="send-card-meta">{metaParts.join(' · ')}</div>
           <div className="send-card-footer">
-            KEEP LINES, YOUR MOVE. · {(signature.analysisMethod || signature.sourceType).toUpperCase()}
+            <span>KLYM · MOTION SIGNATURE</span>
+            <span>{(signature.analysisMethod || signature.sourceType).toUpperCase()}</span>
           </div>
         </div>
       </div>
