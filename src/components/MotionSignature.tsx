@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { MotionSignatureData, MotionSignatureStyle, MotionPoint } from '../types/klym';
-import { clamp, generateSeedPath, motionPointAtProgress, scaledPoints, smoothPath } from '../lib/signature';
+import { clamp, generateSeedPath, motionPointAtProgress, partialSmoothPath, scaledPoints, smoothPath } from '../lib/signature';
 import { tokens } from '../lib/tokens';
 
 const VB_W = 280;
@@ -36,6 +36,7 @@ export function MotionSignature({
   const seedPath = data ? null : generateSeedPath(seed, VB_W, VB_H);
   const points = data ? scaledPoints(data.points, VB_W, VB_H) : seedPath?.points || [];
   const path = data ? data.svgPath : smoothPath(points);
+  const visiblePath = progress === undefined ? path : partialSmoothPath(points, progress);
   const cruxPoints = points.filter((point) => point.dyno);
   const cruxPoint = activeSpotlightPoint(points, cruxPoints, progress);
   const minorPoint = points.find((point) => 'minor' in point && point.minor);
@@ -58,6 +59,7 @@ export function MotionSignature({
         <DataSignature
           points={points}
           path={path}
+          visiblePath={visiblePath}
           ink={ink}
           accent={accent}
           baseStroke={baseStroke}
@@ -68,7 +70,9 @@ export function MotionSignature({
       )}
       {style === 'refined' && (
         <RefinedSignature
+          points={points}
           path={path}
+          visiblePath={visiblePath}
           ink={ink}
           accent={accent}
           baseStroke={baseStroke}
@@ -80,7 +84,9 @@ export function MotionSignature({
       )}
       {style === 'editorial' && (
         <EditorialSignature
+          points={points}
           path={path}
+          visiblePath={visiblePath}
           ink={ink}
           accent={accent}
           baseStroke={baseStroke}
@@ -93,6 +99,7 @@ export function MotionSignature({
         <DynamicSignature
           points={points}
           path={path}
+          visiblePath={visiblePath}
           ink={ink}
           accent={accent}
           baseStroke={baseStroke}
@@ -134,6 +141,7 @@ function SignatureGrid({ ink }: { ink: string }) {
 function DataSignature({
   points,
   path,
+  visiblePath,
   ink,
   accent,
   baseStroke,
@@ -143,6 +151,7 @@ function DataSignature({
 }: {
   points: MotionPoint[];
   path: string;
+  visiblePath: string;
   ink: string;
   accent: string;
   baseStroke: number;
@@ -150,7 +159,7 @@ function DataSignature({
   animate: boolean;
   progress?: number;
 }) {
-  const pathStyle = pathProgressStyle(progress);
+  const visiblePoints = progress === undefined ? points : points.filter((point) => (point.t ?? 0) <= progress);
   return (
     <g className={animate ? 'signature-draw' : undefined}>
       <g stroke={ink} strokeOpacity="0.4" strokeWidth="0.6">
@@ -164,9 +173,13 @@ function DataSignature({
         <line x1={VB_W - 6} y1={VB_H - 6} x2={VB_W - 6} y2={VB_H - 16} />
       </g>
       <path d={path} fill="none" stroke={ink} strokeOpacity="0.2" strokeWidth={baseStroke * 1.6} strokeLinecap="round" />
-      <path className="motion-path" pathLength={1} style={pathStyle} d={path} fill="none" stroke={ink} strokeWidth={baseStroke} strokeLinecap="round" />
+      {visiblePath && <path className="motion-path" d={visiblePath} fill="none" stroke={ink} strokeWidth={baseStroke} strokeLinecap="round" />}
       {points.map((point, index) => {
-        if (index === 0 || index === points.length - 1) return null;
+        if (
+          index === 0 ||
+          index === points.length - 1 ||
+          (progress !== undefined && (point.t ?? 0) > progress)
+        ) return null;
         const prev = points[index - 1];
         const next = points[index + 1];
         const dx = next.x - prev.x;
@@ -191,8 +204,11 @@ function DataSignature({
       })}
       {cruxPoint && <CruxMark point={cruxPoint} accent={accent} ink={ink} data />}
       {points[0] && <circle cx={points[0].x} cy={points[0].y} r="3" fill="none" stroke={ink} strokeWidth="1" />}
-      {points[points.length - 1] && (
+      {progress === undefined && points[points.length - 1] && (
         <rect x={points[points.length - 1].x - 4} y={points[points.length - 1].y - 4} width="8" height="8" fill="none" stroke={accent} />
+      )}
+      {progress !== undefined && visiblePoints.length > 1 && (
+        <circle cx={cruxPoint?.x ?? visiblePoints[visiblePoints.length - 1].x} cy={cruxPoint?.y ?? visiblePoints[visiblePoints.length - 1].y} r="2.2" fill={accent} />
       )}
     </g>
   );
@@ -201,6 +217,7 @@ function DataSignature({
 function DynamicSignature({
   points,
   path,
+  visiblePath,
   ink,
   accent,
   baseStroke,
@@ -210,6 +227,7 @@ function DynamicSignature({
 }: {
   points: MotionPoint[];
   path: string;
+  visiblePath: string;
   ink: string;
   accent: string;
   baseStroke: number;
@@ -217,7 +235,6 @@ function DynamicSignature({
   animate: boolean;
   progress?: number;
 }) {
-  const pathStyle = pathProgressStyle(progress);
   return (
     <g className={animate ? 'signature-draw' : undefined}>
       {cruxPoint && <circle cx={cruxPoint.x} cy={cruxPoint.y} r="36" fill={accent} opacity="0.16" filter="url(#klymBlur)" />}
@@ -230,7 +247,7 @@ function DynamicSignature({
         strokeLinecap="round"
         filter="url(#klymBlur)"
       />
-      {points.slice(0, -1).map((point, index) => {
+      {progress === undefined && points.slice(0, -1).map((point, index) => {
         const next = points[index + 1];
         const width = baseStroke + (point.velocity || 0.2) * 4 + (point.dyno || next.dyno ? 6 : 0);
         const segmentProgress =
@@ -252,16 +269,38 @@ function DynamicSignature({
           />
         );
       })}
+      {progress !== undefined && visiblePath && (
+        <>
+          <path
+            className="motion-path"
+            d={visiblePath}
+            fill="none"
+            stroke={ink}
+            strokeWidth={baseStroke * 2.9}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity="0.94"
+          />
+          <path
+            d={visiblePath}
+            fill="none"
+            stroke={accent}
+            strokeOpacity="0.8"
+            strokeWidth="0.9"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            transform="translate(3,0)"
+          />
+        </>
+      )}
       <path
-        d={path}
+        d={progress === undefined ? path : visiblePath}
         fill="none"
         stroke={accent}
         strokeOpacity="0.26"
         strokeWidth="0.7"
         strokeLinecap="round"
         transform="translate(3,0)"
-        pathLength={1}
-        style={pathStyle}
       />
       {cruxPoint && <CruxMark point={cruxPoint} accent={accent} ink={ink} />}
     </g>
@@ -269,7 +308,9 @@ function DynamicSignature({
 }
 
 function RefinedSignature({
+  points,
   path,
+  visiblePath,
   ink,
   accent,
   baseStroke,
@@ -278,7 +319,9 @@ function RefinedSignature({
   animate,
   progress,
 }: {
+  points: MotionPoint[];
   path: string;
+  visiblePath: string;
   ink: string;
   accent: string;
   baseStroke: number;
@@ -287,20 +330,22 @@ function RefinedSignature({
   animate: boolean;
   progress?: number;
 }) {
-  const pathStyle = pathProgressStyle(progress);
   return (
     <g className={animate ? 'signature-draw' : undefined}>
       <path d={path} fill="none" stroke={ink} strokeOpacity="0.08" strokeWidth={baseStroke * 1.4} strokeLinecap="round" transform="translate(2,3)" />
       <path d={path} fill="none" stroke={ink} strokeOpacity="0.18" strokeWidth="0.7" strokeDasharray="1 3" />
-      <path className="motion-path" pathLength={1} style={pathStyle} d={path} fill="none" stroke={ink} strokeWidth={baseStroke} strokeLinecap="round" strokeLinejoin="round" />
+      {visiblePath && <path className="motion-path" d={visiblePath} fill="none" stroke={ink} strokeWidth={baseStroke} strokeLinecap="round" strokeLinejoin="round" />}
       {cruxPoint && <CruxMark point={cruxPoint} accent={accent} ink={ink} refined />}
-      {minorPoint && <circle cx={minorPoint.x} cy={minorPoint.y} r="2.4" fill="none" stroke={accent} strokeWidth="0.8" />}
+      {minorPoint && (progress === undefined || (minorPoint.t ?? 0) <= progress) && <circle cx={minorPoint.x} cy={minorPoint.y} r="2.4" fill="none" stroke={accent} strokeWidth="0.8" />}
+      {progress !== undefined && points.length > 1 && cruxPoint && <circle cx={cruxPoint.x} cy={cruxPoint.y} r="2.2" fill={accent} />}
     </g>
   );
 }
 
 function EditorialSignature({
+  points,
   path,
+  visiblePath,
   ink,
   accent,
   baseStroke,
@@ -308,7 +353,9 @@ function EditorialSignature({
   animate,
   progress,
 }: {
+  points: MotionPoint[];
   path: string;
+  visiblePath: string;
   ink: string;
   accent: string;
   baseStroke: number;
@@ -316,14 +363,14 @@ function EditorialSignature({
   animate: boolean;
   progress?: number;
 }) {
-  const pathStyle = pathProgressStyle(progress);
   return (
     <g className={animate ? 'signature-draw' : undefined}>
-      <path d={path} fill="none" stroke={accent} strokeOpacity="0.2" strokeWidth={baseStroke * 7} strokeLinecap="round" filter="url(#klymBlur)" transform="translate(-3,4)" />
-      <path d={path} fill="none" stroke={ink} strokeOpacity="0.22" strokeWidth={baseStroke * 4} strokeLinecap="round" filter="url(#klymBlur)" />
-      <path className="motion-path" pathLength={1} style={pathStyle} d={path} fill="none" stroke={ink} strokeWidth={baseStroke * 0.9} strokeLinecap="round" strokeLinejoin="round" />
-      <path d={path} fill="none" stroke={accent} strokeOpacity="0.42" strokeWidth="0.6" strokeLinecap="round" transform="translate(4,-2)" />
+      <path d={visiblePath || path} fill="none" stroke={accent} strokeOpacity="0.2" strokeWidth={baseStroke * 7} strokeLinecap="round" filter="url(#klymBlur)" transform="translate(-3,4)" />
+      <path d={visiblePath || path} fill="none" stroke={ink} strokeOpacity="0.22" strokeWidth={baseStroke * 4} strokeLinecap="round" filter="url(#klymBlur)" />
+      {visiblePath && <path className="motion-path" d={visiblePath} fill="none" stroke={ink} strokeWidth={baseStroke * 0.9} strokeLinecap="round" strokeLinejoin="round" />}
+      <path d={visiblePath || path} fill="none" stroke={accent} strokeOpacity="0.42" strokeWidth="0.6" strokeLinecap="round" transform="translate(4,-2)" />
       {cruxPoint && <CruxMark point={cruxPoint} accent={accent} ink={ink} />}
+      {progress !== undefined && points.length > 1 && cruxPoint && <circle cx={cruxPoint.x} cy={cruxPoint.y} r="2.2" fill={accent} />}
     </g>
   );
 }

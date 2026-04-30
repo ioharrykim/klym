@@ -110,24 +110,20 @@ export async function exportElementAsVideo({
   const renderScale = Math.max(targetWidth / sourceRect.width, targetHeight / sourceRect.height);
   const backgroundVideo = backgroundVideoUrl ? await prepareBackgroundVideo(backgroundVideoUrl) : undefined;
 
-  element.classList.add(hideSignatureClass);
-  if (backgroundVideo) element.classList.add('send-card-media-hidden', 'send-card-export-overlay');
   let rawCanvas: HTMLCanvasElement;
-  try {
-    rawCanvas = await toCanvas(element, {
-      cacheBust: true,
-      pixelRatio: renderScale,
-      backgroundColor: backgroundVideo ? 'transparent' : '#0A0A0B',
-    });
-  } catch (error) {
-    if (!backgroundVideo) throw error;
-    console.warn('KLYM could not capture the card chrome for video export.', error);
-    rawCanvas = document.createElement('canvas');
-    rawCanvas.width = Math.max(1, Math.round(sourceRect.width * renderScale));
-    rawCanvas.height = Math.max(1, Math.round(sourceRect.height * renderScale));
-  } finally {
-    element.classList.remove(hideSignatureClass);
-    element.classList.remove('send-card-media-hidden', 'send-card-export-overlay');
+  if (backgroundVideo) {
+    rawCanvas = renderCardChromeOverlay(element, targetWidth, targetHeight, textTone);
+  } else {
+    element.classList.add(hideSignatureClass);
+    try {
+      rawCanvas = await toCanvas(element, {
+        cacheBust: true,
+        pixelRatio: renderScale,
+        backgroundColor: '#0A0A0B',
+      });
+    } finally {
+      element.classList.remove(hideSignatureClass);
+    }
   }
 
   // Normalize to exact target dimensions (the raw canvas may be sized to natural ratio).
@@ -313,6 +309,202 @@ function drawExportFrame({
   if (backgroundVideo) {
     ctx.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
   }
+}
+
+function renderCardChromeOverlay(
+  element: HTMLElement,
+  targetWidth: number,
+  targetHeight: number,
+  textTone: SendCardTextTone,
+) {
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not create card chrome canvas context.');
+
+  const ink = textTone === 'dark' ? '#0a0a0b' : '#f4f1ea';
+  const muted = textTone === 'dark' ? 'rgba(10, 10, 11, 0.56)' : 'rgba(244, 241, 234, 0.58)';
+  const hairline = textTone === 'dark' ? 'rgba(10, 10, 11, 0.22)' : 'rgba(244, 241, 234, 0.2)';
+  const accent = '#ff5a1f';
+  const pad = Math.round(Math.min(targetWidth, targetHeight) * 0.044);
+  const frameInset = Math.round(pad * 0.55);
+  const isStory = targetHeight / targetWidth > 1.55;
+  const displaySize = Math.round(targetWidth * (isStory ? 0.032 : 0.036));
+  const markSize = Math.round(targetWidth * 0.025);
+  const monoSize = Math.round(targetWidth * 0.018);
+  const reflectionSize = Math.round(targetWidth * 0.023);
+
+  ctx.clearRect(0, 0, targetWidth, targetHeight);
+  drawChromeGradient(ctx, targetWidth, targetHeight, textTone);
+
+  ctx.save();
+  ctx.strokeStyle = hairline;
+  ctx.lineWidth = Math.max(1, targetWidth / 720);
+  ctx.strokeRect(frameInset, frameInset, targetWidth - frameInset * 2, targetHeight - frameInset * 2);
+  ctx.restore();
+
+  const mark = textFrom(element, '.send-card-mark strong') || 'KLYM';
+  const date = textFrom(element, '.send-card-mark span');
+  ctx.fillStyle = ink;
+  ctx.font = `800 ${markSize}px Space Grotesk, system-ui, sans-serif`;
+  ctx.textBaseline = 'top';
+  ctx.letterSpacing = `${markSize * 0.18}px`;
+  ctx.fillText(mark, pad, pad);
+  ctx.letterSpacing = '0px';
+  if (date) {
+    ctx.fillStyle = muted;
+    ctx.font = `600 ${Math.max(9, monoSize * 0.72)}px JetBrains Mono, monospace`;
+    ctx.fillText(date, pad + ctx.measureText(mark).width + pad * 0.42, pad + markSize * 0.18);
+  }
+
+  const reflection = textFrom(element, '.send-card-reflection');
+  const title = textFrom(element, '.send-card-title-row h2');
+  const localName = textFrom(element, '.send-card-title-row h3');
+  const meta = textFrom(element, '.send-card-meta');
+  const gradeNode = element.querySelector<HTMLElement>('.send-card-grade-pill');
+  const grade = gradeNode?.textContent?.trim() || '';
+  const analysis = textFrom(element, '.send-card-footer span:last-child');
+
+  const footerY = targetHeight - pad - Math.round(targetHeight * 0.035);
+  const footerLineY = footerY - Math.round(targetHeight * 0.02);
+  const metaY = footerLineY - Math.round(targetHeight * 0.025);
+  const titleY = metaY - Math.round(targetHeight * 0.035);
+  const reflectionY = titleY - Math.round(targetHeight * 0.06);
+
+  if (reflection) {
+    ctx.fillStyle = textTone === 'dark' ? 'rgba(10, 10, 11, 0.78)' : 'rgba(244, 241, 234, 0.88)';
+    ctx.font = `400 italic ${reflectionSize}px Space Grotesk, system-ui, sans-serif`;
+    drawWrappedText(ctx, reflection, pad, reflectionY, targetWidth * 0.82, reflectionSize * 1.35, 2);
+  }
+
+  if (title) {
+    ctx.fillStyle = ink;
+    ctx.font = `800 ${displaySize}px Space Grotesk, system-ui, sans-serif`;
+    ctx.fillText(title.toUpperCase(), pad, titleY);
+    if (localName) {
+      ctx.fillStyle = muted;
+      ctx.font = `600 ${Math.round(displaySize * 0.62)}px JetBrains Mono, monospace`;
+      ctx.fillText(localName.toUpperCase(), pad + ctx.measureText(title.toUpperCase()).width + pad * 0.3, titleY + displaySize * 0.16);
+    }
+  }
+
+  if (meta) {
+    ctx.fillStyle = muted;
+    ctx.font = `700 ${monoSize}px JetBrains Mono, monospace`;
+    ctx.fillText(meta.toUpperCase(), pad, metaY);
+  }
+
+  ctx.strokeStyle = hairline;
+  ctx.lineWidth = Math.max(1, targetWidth / 1080);
+  ctx.beginPath();
+  ctx.moveTo(pad, footerLineY);
+  ctx.lineTo(targetWidth - pad, footerLineY);
+  ctx.stroke();
+
+  const pillY = footerY;
+  const pillH = Math.max(18, Math.round(targetHeight * 0.013));
+  if (gradeNode?.classList.contains('is-color')) {
+    const gradeColor = computedCssVar(gradeNode, '--grade-color') || getComputedStyle(gradeNode).backgroundColor || accent;
+    ctx.fillStyle = gradeColor;
+    roundRect(ctx, pad, pillY, Math.round(targetWidth * 0.075), pillH, pillH / 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(244, 241, 234, 0.22)';
+    ctx.stroke();
+  } else if (grade) {
+    ctx.font = `800 ${Math.max(10, monoSize)}px JetBrains Mono, monospace`;
+    const pillW = Math.max(Math.round(targetWidth * 0.08), ctx.measureText(grade).width + pad * 0.38);
+    ctx.strokeStyle = accent;
+    ctx.fillStyle = accent;
+    roundRect(ctx, pad, pillY, pillW, pillH, pillH / 2);
+    ctx.stroke();
+    ctx.fillText(grade.toUpperCase(), pad + pad * 0.18, pillY + pillH * 0.2);
+  }
+
+  if (analysis) {
+    ctx.fillStyle = accent;
+    ctx.font = `800 ${Math.max(9, monoSize * 0.86)}px JetBrains Mono, monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText(analysis.toUpperCase(), targetWidth - pad, pillY + pillH * 0.22);
+    ctx.textAlign = 'left';
+  }
+
+  return canvas;
+}
+
+function drawChromeGradient(
+  ctx: CanvasRenderingContext2D,
+  targetWidth: number,
+  targetHeight: number,
+  textTone: SendCardTextTone,
+) {
+  const top = ctx.createLinearGradient(0, 0, 0, targetHeight);
+  if (textTone === 'dark') {
+    top.addColorStop(0, 'rgba(244, 241, 234, 0.72)');
+    top.addColorStop(0.24, 'rgba(244, 241, 234, 0.16)');
+    top.addColorStop(0.58, 'rgba(244, 241, 234, 0.10)');
+    top.addColorStop(1, 'rgba(244, 241, 234, 0.82)');
+  } else {
+    top.addColorStop(0, 'rgba(10, 10, 11, 0.54)');
+    top.addColorStop(0.18, 'rgba(10, 10, 11, 0)');
+    top.addColorStop(0.60, 'rgba(10, 10, 11, 0)');
+    top.addColorStop(1, 'rgba(10, 10, 11, 0.86)');
+  }
+  ctx.fillStyle = top;
+  ctx.fillRect(0, 0, targetWidth, targetHeight);
+}
+
+function drawWrappedText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxLines: number,
+) {
+  const words = text.split(/\s+/).filter(Boolean);
+  let line = '';
+  let lineCount = 0;
+
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (ctx.measureText(next).width <= maxWidth) {
+      line = next;
+      continue;
+    }
+    if (line) {
+      ctx.fillText(line, x, y + lineCount * lineHeight);
+      lineCount += 1;
+    }
+    line = word;
+    if (lineCount >= maxLines - 1) break;
+  }
+
+  if (line && lineCount < maxLines) ctx.fillText(line, x, y + lineCount * lineHeight);
+}
+
+function textFrom(element: HTMLElement, selector: string) {
+  return element.querySelector(selector)?.textContent?.trim() || '';
+}
+
+function computedCssVar(element: HTMLElement, name: string) {
+  return getComputedStyle(element).getPropertyValue(name).trim();
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 interface Mp4EncodeOptions {
