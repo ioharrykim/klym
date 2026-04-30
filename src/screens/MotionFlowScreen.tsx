@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MotionSignature } from '../components/MotionSignature';
 import { EmptyState, Icon, KButton } from '../components/UI';
+import { GradeInput } from '../components/GradeInput';
 import { extractFramesFromVideo } from '../lib/motion/extractFrames';
 import { detectMotionFromFrames } from '../lib/motion/poseDetection';
 import { composeMotionPath } from '../lib/motion/path';
 import type {
+  GradeMode,
   MotionFrame,
   MotionEvent,
   MotionPoint,
@@ -12,6 +14,7 @@ import type {
   MotionSignatureData,
   MotionSignatureStyle,
   Project,
+  ProjectDraft,
 } from '../types/klym';
 
 type SignatureDraft = Omit<MotionSignatureData, 'id' | 'createdAt'>;
@@ -20,12 +23,23 @@ interface MotionFlowScreenProps {
   projects: Project[];
   selectedProject?: Project;
   style: MotionSignatureStyle;
+  quickMode?: boolean;
   onCreateProject: () => void;
   onBack: () => void;
   onComplete: (signature: SignatureDraft, project?: Project) => void;
+  onQuickComplete?: (signature: SignatureDraft, projectDraft: ProjectDraft) => void;
 }
 
-export function MotionFlowScreen({ projects, selectedProject, style, onCreateProject, onBack, onComplete }: MotionFlowScreenProps) {
+export function MotionFlowScreen({
+  projects,
+  selectedProject,
+  style,
+  quickMode = false,
+  onCreateProject,
+  onBack,
+  onComplete,
+  onQuickComplete,
+}: MotionFlowScreenProps) {
   const [projectId, setProjectId] = useState(selectedProject?.id || projects[0]?.id || '');
   const project = projects.find((item) => item.id === projectId);
   const [signatureStyle, setSignatureStyle] = useState<MotionSignatureStyle>(style);
@@ -180,7 +194,7 @@ export function MotionFlowScreen({ projects, selectedProject, style, onCreatePro
       </div>
 
       <div className="motion-body">
-        {projects.length === 0 ? (
+        {!quickMode && projects.length === 0 ? (
           <EmptyState
             title="CREATE A PROJECT FIRST"
             body="Motion Signatures attach to a real line. Add the gym, grade, and wall first, then upload the send video."
@@ -188,16 +202,25 @@ export function MotionFlowScreen({ projects, selectedProject, style, onCreatePro
           />
         ) : (
           <>
-            <label className="motion-project-select">
-              <span>PROJECT</span>
-              <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                {projects.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.displayName} · {item.grade}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {!quickMode && (
+              <label className="motion-project-select">
+                <span>PROJECT</span>
+                <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                  {projects.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.displayName} · {item.grade}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {quickMode && (state === 'idle' || state === 'video-selected') && (
+              <div className="quick-banner">
+                <span>QUICK SEND</span>
+                <p>Drop a send clip and KLYM builds a Motion Signature card. No project log required.</p>
+              </div>
+            )}
 
             {(state === 'idle' || state === 'video-selected') && (
               <UploadStep
@@ -205,6 +228,7 @@ export function MotionFlowScreen({ projects, selectedProject, style, onCreatePro
                 previewUrl={previewUrl}
                 onFile={handleFile}
                 onProcess={processVideo}
+                quickMode={quickMode}
               />
             )}
 
@@ -230,9 +254,11 @@ export function MotionFlowScreen({ projects, selectedProject, style, onCreatePro
                 project={project}
                 previewUrl={previewUrl}
                 style={signatureStyle}
+                quickMode={quickMode}
                 onStyle={updateReadyStyle}
                 onManual={() => setState('failed')}
                 onComplete={() => onComplete({ ...readySignature, style: signatureStyle }, project)}
+                onQuickComplete={(draft) => onQuickComplete?.({ ...readySignature, style: signatureStyle }, draft)}
               />
             )}
           </>
@@ -247,17 +273,23 @@ function UploadStep({
   previewUrl,
   onFile,
   onProcess,
+  quickMode = false,
 }: {
   selectedFile: File | null;
   previewUrl: string;
   onFile: (file: File) => void;
   onProcess: () => void;
+  quickMode?: boolean;
 }) {
   return (
     <div className="upload-step">
       <div>
-        <h1>UPLOAD YOUR SEND VIDEO.</h1>
-        <p>Your movement becomes a unique continuous line. Automatic detection runs first; manual correction is available if confidence drops.</p>
+        <h1>{quickMode ? 'DROP YOUR SEND CLIP.' : 'UPLOAD YOUR SEND VIDEO.'}</h1>
+        <p>
+          {quickMode
+            ? 'Pick a clip from your gallery — KLYM extracts the line and lets you finalize the card with a name and grade.'
+            : 'Your movement becomes a unique continuous line. Automatic detection runs first; manual correction is available if confidence drops.'}
+        </p>
       </div>
       <label className="video-drop">
         <input
@@ -389,19 +421,46 @@ function ReadyStep({
   project,
   previewUrl,
   style,
+  quickMode = false,
   onStyle,
   onManual,
   onComplete,
+  onQuickComplete,
 }: {
   signature: SignatureDraft;
   project?: Project;
   previewUrl: string;
   style: MotionSignatureStyle;
+  quickMode?: boolean;
   onStyle: (style: MotionSignatureStyle) => void;
   onManual: () => void;
   onComplete: () => void;
+  onQuickComplete?: (draft: ProjectDraft) => void;
 }) {
   const styles: MotionSignatureStyle[] = useMemo(() => ['dynamic', 'refined', 'editorial', 'data'], []);
+  const [quickDraft, setQuickDraft] = useState<ProjectDraft>({
+    displayName: '',
+    localName: '',
+    gymName: '',
+    wallName: '',
+    grade: 'V6',
+    gradeMode: 'scale',
+    gradeColor: undefined,
+    notes: '',
+    betaNotes: '',
+    nextAttemptStrategy: '',
+    status: 'sent',
+  });
+  const quickCanSubmit =
+    quickDraft.displayName.trim().length > 0 &&
+    (quickDraft.gradeMode === 'color'
+      ? Boolean(quickDraft.gradeColor)
+      : quickDraft.grade.trim().length > 0);
+
+  function updateQuick<K extends keyof ProjectDraft>(key: K, value: ProjectDraft[K]) {
+    setQuickDraft((current) => ({ ...current, [key]: value }));
+  }
+
   return (
     <div className="ready-step">
       <span className="ready-kicker">SIGNATURE READY · {signature.sourceType.toUpperCase()} · {Math.round(signature.confidenceScore * 100)}%</span>
@@ -424,14 +483,87 @@ function ReadyStep({
           </button>
         ))}
       </div>
-      <div className="ready-actions">
-        <KButton variant="ghost" icon="pencil" onClick={onManual}>
-          MANUAL CORRECTION
-        </KButton>
-        <KButton icon="arrow-right" onClick={onComplete}>
-          SAVE · BUILD CARD
-        </KButton>
-      </div>
+      {quickMode ? (
+        <div className="quick-meta-form">
+          <div className="quick-meta-head">
+            <span>FINISH THE CARD</span>
+            <h2>NAME THIS SEND.</h2>
+          </div>
+          <label>
+            <span>PROJECT NAME</span>
+            <input
+              value={quickDraft.displayName}
+              onChange={(event) => updateQuick('displayName', event.target.value)}
+              placeholder="CONCRETE TRAVERSE"
+              autoFocus
+            />
+          </label>
+          <div className="field-grid">
+            <label>
+              <span>GYM (OPTIONAL)</span>
+              <input
+                value={quickDraft.gymName}
+                onChange={(event) => updateQuick('gymName', event.target.value)}
+                placeholder="THE CLIMB · SEONGSU"
+              />
+            </label>
+            <label>
+              <span>WALL (OPTIONAL)</span>
+              <input
+                value={quickDraft.wallName}
+                onChange={(event) => updateQuick('wallName', event.target.value)}
+                placeholder="WALL 03"
+              />
+            </label>
+          </div>
+          <label className="grade-input-label">
+            <span>GRADE</span>
+            <GradeInput
+              mode={(quickDraft.gradeMode as GradeMode) || 'scale'}
+              grade={quickDraft.grade}
+              color={quickDraft.gradeColor}
+              onChange={(next) =>
+                setQuickDraft((current) => ({
+                  ...current,
+                  gradeMode: next.mode,
+                  grade: next.grade,
+                  gradeColor: next.color,
+                }))
+              }
+              compact
+            />
+          </label>
+          <div className="ready-actions">
+            <KButton variant="ghost" icon="pencil" onClick={onManual}>
+              MANUAL FIX
+            </KButton>
+            <KButton
+              icon="arrow-right"
+              onClick={() =>
+                onQuickComplete?.({
+                  ...quickDraft,
+                  displayName: quickDraft.displayName.trim().toUpperCase(),
+                  problemName: quickDraft.displayName.trim(),
+                  gymName: quickDraft.gymName.trim() || 'KLYM',
+                  wallName: quickDraft.wallName.trim() || 'LINE',
+                })
+              }
+              disabled={!quickCanSubmit}
+            >
+              BUILD CARD
+            </KButton>
+          </div>
+        </div>
+      ) : (
+        <div className="ready-actions">
+          <KButton variant="ghost" icon="pencil" onClick={onManual}>
+            MANUAL CORRECTION
+          </KButton>
+          <KButton icon="arrow-right" onClick={onComplete}>
+            SAVE · BUILD CARD
+          </KButton>
+        </div>
+      )}
     </div>
   );
 }

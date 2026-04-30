@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import type { AttemptDraft, AttemptResult, Project, ProjectDraft, ProjectStatus } from '../types/klym';
+import type { AttemptDraft, AttemptResult, GradeMode, Project, ProjectDraft, ProjectStatus } from '../types/klym';
+import { GradeInput } from './GradeInput';
 import { KButton } from './UI';
 
 const statusOptions: ProjectStatus[] = ['projecting', 'close', 'sent', 'archived'];
@@ -19,6 +20,8 @@ export function ProjectForm({
   const [draft, setDraft] = useState<ProjectDraft>(() => ({
     gymName: project?.gymName || 'THE CLIMB · SEONGSU',
     grade: project?.grade || 'V6',
+    gradeMode: project?.gradeMode || 'scale',
+    gradeColor: project?.gradeColor,
     wallName: project?.wallName || '',
     problemName: project?.problemName || '',
     displayName: project?.displayName || '',
@@ -29,7 +32,8 @@ export function ProjectForm({
     status: project?.status || 'projecting',
   }));
 
-  const canSubmit = draft.displayName.trim() && draft.gymName.trim() && draft.grade.trim() && draft.wallName.trim();
+  const gradeValid = draft.gradeMode === 'color' ? Boolean(draft.gradeColor) : Boolean(draft.grade.trim());
+  const canSubmit = draft.displayName.trim() && draft.gymName.trim() && gradeValid && draft.wallName.trim();
 
   function update<K extends keyof ProjectDraft>(key: K, value: ProjectDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -75,9 +79,21 @@ export function ProjectForm({
           <span>WALL</span>
           <input value={draft.wallName} onChange={(event) => update('wallName', event.target.value)} placeholder="WALL 03" />
         </label>
-        <label>
+        <label className="grade-input-label">
           <span>GRADE</span>
-          <input value={draft.grade} onChange={(event) => update('grade', event.target.value.toUpperCase())} placeholder="V6" />
+          <GradeInput
+            mode={(draft.gradeMode as GradeMode) || 'scale'}
+            grade={draft.grade}
+            color={draft.gradeColor}
+            onChange={(next) =>
+              setDraft((current) => ({
+                ...current,
+                gradeMode: next.mode,
+                grade: next.grade,
+                gradeColor: next.color,
+              }))
+            }
+          />
         </label>
         <label>
           <span>STATUS</span>

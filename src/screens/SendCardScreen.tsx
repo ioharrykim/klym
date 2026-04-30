@@ -185,10 +185,10 @@ export function SendCardScreen({
               </label>
             </div>
 
-            <div className="segmented-row">
-              {(['square', 'story'] as const).map((item) => (
+            <div className="segmented-row segmented-row-tri">
+              {(['square', 'feed-tall', 'story'] as const).map((item) => (
                 <button key={item} type="button" data-active={format === item} onClick={() => setFormat(item)}>
-                  {item === 'square' ? 'FEED 1:1' : 'STORY 9:16'}
+                  {item === 'square' ? 'FEED 1:1' : item === 'feed-tall' ? 'FEED 4:5' : 'STORY 9:16'}
                 </button>
               ))}
             </div>

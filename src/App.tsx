@@ -10,7 +10,7 @@ import { ProjectDetailScreen } from './screens/ProjectDetailScreen';
 import { ProjectsScreen } from './screens/ProjectsScreen';
 import { SendCardScreen } from './screens/SendCardScreen';
 import { ProfileScreen, SessionsScreen } from './screens/UtilityScreens';
-import type { MotionSignatureData, Project } from './types/klym';
+import type { MotionSignatureData, Project, ProjectDraft } from './types/klym';
 
 type Screen = 'home' | 'projects' | 'project' | 'motion' | 'sendcard' | 'sessions' | 'profile';
 
@@ -22,6 +22,7 @@ export default function App() {
   const [history, setHistory] = useState<Screen[]>([]);
   const [activeProjectId, setActiveProjectId] = useState('');
   const [activeSignature, setActiveSignature] = useState<MotionSignatureData | undefined>();
+  const [quickMode, setQuickMode] = useState(false);
 
   const activeProject = useMemo(
     () => projectsApi.projects.find((project) => project.id === activeProjectId),
@@ -35,6 +36,7 @@ export default function App() {
   }
 
   function back() {
+    setQuickMode(false);
     setHistory((current) => {
       const previous = current[current.length - 1] || 'home';
       setScreen(previous);
@@ -42,11 +44,19 @@ export default function App() {
     });
   }
 
+  function startQuickSend() {
+    setQuickMode(true);
+    setActiveProjectId('');
+    setActiveSignature(undefined);
+    goto('motion');
+  }
+
   function handleTab(tab: string) {
     if (tab === 'send') {
-      goto('motion', activeProject || projectsApi.stats.focusProject);
+      startQuickSend();
       return;
     }
+    setQuickMode(false);
     setScreen(tab as Screen);
   }
 
@@ -65,7 +75,11 @@ export default function App() {
               style={defaultStyle}
               onProject={(project) => goto('project', project)}
               onProjects={() => goto('projects')}
-              onMotion={(project) => goto('motion', project)}
+              onMotion={(project) => {
+                setQuickMode(false);
+                goto('motion', project);
+              }}
+              onQuickSend={startQuickSend}
             />
             <TabBar active={tabActive} onTab={handleTab} />
           </>
@@ -100,7 +114,8 @@ export default function App() {
         {screen === 'motion' && (
           <MotionFlowScreen
             projects={projectsApi.projects}
-            selectedProject={activeProject || projectsApi.stats.focusProject}
+            selectedProject={quickMode ? undefined : activeProject || projectsApi.stats.focusProject}
+            quickMode={quickMode}
             style={defaultStyle}
             onCreateProject={() => goto('projects')}
             onBack={back}
@@ -111,6 +126,14 @@ export default function App() {
                 projectsApi.markProjectSent(project.id);
                 setActiveProjectId(project.id);
               }
+              goto('sendcard', project);
+            }}
+            onQuickComplete={(draft, projectDraft) => {
+              const project = projectsApi.createProject({ ...projectDraft, status: 'sent' });
+              const saved = signaturesApi.saveSignature({ ...draft, projectId: project.id });
+              setActiveSignature(saved);
+              setActiveProjectId(project.id);
+              setQuickMode(false);
               goto('sendcard', project);
             }}
           />

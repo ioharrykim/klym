@@ -45,7 +45,9 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
       : backgroundMode === 'video-frames'
         ? signature.backgroundFrameDataUrls || []
         : [];
-  const metaParts = [project.gymName, project.wallName, project.grade, `${project.attemptsCount}T`];
+  const showColorGrade = project.gradeMode === 'color' && Boolean(project.gradeColor);
+  const metaGrade = showColorGrade ? 'COLOR' : project.grade;
+  const metaParts = [project.gymName, project.wallName, metaGrade, `${project.attemptsCount}T`].filter(Boolean) as string[];
   if (project.sentAt) metaParts.push(`${projectDuration(project)}D`);
   return (
     <div
@@ -79,7 +81,15 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
             <strong>KLYM</strong>
             <span>{sentDate}</span>
           </div>
-          <span className="send-card-grade">{project.grade}</span>
+          {showColorGrade ? (
+            <span
+              className="send-card-grade send-card-grade-color"
+              style={{ background: project.gradeColor, borderColor: project.gradeColor }}
+              aria-label={`Hold color ${project.gradeColor}`}
+            />
+          ) : (
+            <span className="send-card-grade">{project.grade}</span>
+          )}
         </div>
         <div className="send-card-bottom">
           {reflection && <p className="send-card-reflection">"{reflection}"</p>}

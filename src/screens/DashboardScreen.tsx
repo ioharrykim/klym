@@ -19,6 +19,7 @@ interface DashboardScreenProps {
   onProject: (project: Project) => void;
   onProjects: () => void;
   onMotion: (project?: Project) => void;
+  onQuickSend: () => void;
 }
 
 export function DashboardScreen({
@@ -30,6 +31,7 @@ export function DashboardScreen({
   onProject,
   onProjects,
   onMotion,
+  onQuickSend,
 }: DashboardScreenProps) {
   const focus = stats.focusProject;
 
@@ -50,31 +52,31 @@ export function DashboardScreen({
           <div className="first-run-signature">
             <MotionSignature seed={4371} style={style} animate showGrid />
           </div>
-          <span>KLYM // LOCAL-FIRST PROJECT LOG</span>
+          <span>KLYM // VIDEO → SEND CARD</span>
           <h1>
-            START WITH
+            TURN YOUR SEND
             <br />
-            YOUR FIRST LINE.
+            INTO A CARD.
           </h1>
           <p>
-            Create a climbing project, log attempts, mark the send, then turn your send video into a Motion Signature and export a premium card.
+            Drop a clip, KLYM extracts the line as a Motion Signature, and you publish a premium card. No login, no upload — everything runs on your device.
           </p>
           <div className="first-run-actions">
-            <KButton icon="plus" onClick={onProjects}>
-              CREATE PROJECT
+            <KButton icon="upload" onClick={onQuickSend}>
+              QUICK SEND
             </KButton>
-            <KButton variant="ghost" icon="upload" onClick={onProjects}>
-              UPLOAD AFTER PROJECT
+            <KButton variant="ghost" icon="plus" onClick={onProjects}>
+              FULL PROJECT LOG
             </KButton>
           </div>
         </div>
 
         <div className="first-run-steps">
           {[
-            ['01', 'PROJECT', 'Gym, grade, wall, notes, and beta.'],
-            ['02', 'ATTEMPTS', 'Track tries and refine the next move.'],
-            ['03', 'SEND VIDEO', 'Generate a pose-based Motion Signature.'],
-            ['04', 'SEND CARD', 'Export a premium visual record.'],
+            ['01', 'DROP CLIP', 'MP4 / MOV from your gallery.'],
+            ['02', 'AUTO TRACE', 'Pose-based Motion Signature.'],
+            ['03', 'NAME & GRADE', 'V scale or hold color.'],
+            ['04', 'EXPORT', 'PNG or 1440p video card.'],
           ].map(([index, title, body]) => (
             <div key={index}>
               <span>{index}</span>
@@ -103,6 +105,21 @@ export function DashboardScreen({
         <h1>WHAT LINE WILL YOU DRAW?</h1>
         <p>{projects.length} lines stored locally · {attempts.length} attempt logs</p>
       </div>
+
+      <button type="button" className="quick-send-hero" onClick={onQuickSend}>
+        <div className="quick-send-hero-signature">
+          <MotionSignature seed={9183} style={style} animate showGrid={false} strokeScale={0.9} />
+        </div>
+        <div className="quick-send-hero-copy">
+          <span>QUICK SEND</span>
+          <strong>VIDEO → CARD</strong>
+          <p>Drop a clip, name the line, export a 1440p card. No project log needed.</p>
+        </div>
+        <div className="quick-send-hero-cta">
+          <Icon name="upload" size={14} />
+          START
+        </div>
+      </button>
 
       {focus ? (
         <div className="section-pad">
@@ -148,8 +165,8 @@ export function DashboardScreen({
       <div className="quick-actions">
         <button type="button" onClick={() => onMotion(focus)}>
           <Icon name="upload" />
-          <strong>UPLOAD SEND</strong>
-          <span>MOTION SIGNATURE</span>
+          <strong>UPLOAD TO PROJECT</strong>
+          <span>ATTACH SIGNATURE</span>
         </button>
         <button type="button" onClick={onProjects}>
           <Icon name="plus" />

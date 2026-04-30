@@ -5,6 +5,17 @@ import { scaledPoints, smoothPath } from '../signature';
 const SIGNATURE_VB_W = 280;
 const SIGNATURE_VB_H = 380;
 
+export function formatDimensions(format: SendCardFormat): { width: number; height: number } {
+  switch (format) {
+    case 'square':
+      return { width: 1440, height: 1440 };
+    case 'feed-tall':
+      return { width: 1440, height: 1800 };
+    case 'story':
+      return { width: 1080, height: 1920 };
+  }
+}
+
 export async function exportElementAsPng(element: HTMLElement, fileName: string) {
   const dataUrl = await toPng(element, {
     cacheBust: true,
@@ -51,8 +62,7 @@ export async function exportElementAsVideo({
 
   onProgress?.('preparing', 0.05);
 
-  const targetWidth = format === 'square' ? 1440 : 1080;
-  const targetHeight = format === 'square' ? 1440 : 1920;
+  const { width: targetWidth, height: targetHeight } = formatDimensions(format);
   const sourceRect = element.getBoundingClientRect();
   const renderScale = Math.max(targetWidth / sourceRect.width, targetHeight / sourceRect.height);
 

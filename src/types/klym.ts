@@ -8,10 +8,14 @@ export type AttemptResult =
   | 'send'
   | 'dnf';
 
+export type GradeMode = 'scale' | 'color';
+
 export interface Project {
   id: string;
   gymName: string;
   grade: string;
+  gradeMode?: GradeMode;
+  gradeColor?: string;
   wallName: string;
   problemName?: string;
   displayName: string;
@@ -95,7 +99,7 @@ export interface MotionSignatureData {
   processingNotes: string[];
 }
 
-export type SendCardFormat = 'square' | 'story';
+export type SendCardFormat = 'square' | 'feed-tall' | 'story';
 export type SendCardLayout = 'hero' | 'blueprint' | 'poster';
 export type SendCardBackgroundMode = 'signature' | 'video-frames' | 'photo';
 
@@ -115,6 +119,8 @@ export interface SendCard {
 export interface ProjectDraft {
   gymName: string;
   grade: string;
+  gradeMode?: GradeMode;
+  gradeColor?: string;
   wallName: string;
   problemName?: string;
   displayName: string;
