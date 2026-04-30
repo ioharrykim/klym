@@ -36,7 +36,8 @@ export function MotionSignature({
   const seedPath = data ? null : generateSeedPath(seed, VB_W, VB_H);
   const points = data ? scaledPoints(data.points, VB_W, VB_H) : seedPath?.points || [];
   const path = data ? data.svgPath : smoothPath(points);
-  const cruxPoint = points.find((point) => point.dyno) || maxVelocityPoint(points);
+  const cruxPoints = points.filter((point) => point.dyno);
+  const cruxPoint = activeCruxPoint(cruxPoints, progress) || cruxPoints[0] || maxVelocityPoint(points);
   const minorPoint = points.find((point) => 'minor' in point && point.minor);
   const baseStroke = 2.4 * strokeScale;
 
@@ -368,4 +369,14 @@ function maxVelocityPoint(points: MotionPoint[]) {
     if (!best || (point.velocity || 0) > (best.velocity || 0)) return point;
     return best;
   }, undefined);
+}
+
+function activeCruxPoint(points: MotionPoint[], progress?: number) {
+  if (!points.length) return undefined;
+  if (progress === undefined) return points[0];
+  return points.reduce<MotionPoint>((closest, point) => {
+    const pointDelta = Math.abs((point.t ?? 0) - progress);
+    const closestDelta = Math.abs((closest.t ?? 0) - progress);
+    return pointDelta < closestDelta ? point : closest;
+  }, points[0]);
 }

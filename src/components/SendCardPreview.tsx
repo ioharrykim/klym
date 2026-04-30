@@ -45,9 +45,10 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
       : backgroundMode === 'video-frames'
         ? signature.backgroundFrameDataUrls || []
         : [];
+  const backgroundVideo = backgroundMode === 'video-frames' ? signature.videoDataUrl : '';
   const showColorGrade = project.gradeMode === 'color' && Boolean(project.gradeColor);
-  const metaGrade = showColorGrade ? 'COLOR' : project.grade;
-  const metaParts = [project.gymName, project.wallName, metaGrade, `${project.attemptsCount}T`].filter(Boolean) as string[];
+  const metaGrade = showColorGrade ? `COLOR ${project.gradeColor?.toUpperCase() || ''}`.trim() : project.grade;
+  const metaParts = [project.gymName, project.wallName, metaGrade].filter(Boolean) as string[];
   if (project.sentAt) metaParts.push(`${projectDuration(project)}D`);
   return (
     <div
@@ -62,7 +63,7 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
         .filter(Boolean)
         .join(' ')}
     >
-      {backgroundImages.length > 0 && <MediaBackground images={backgroundImages} />}
+      {(backgroundVideo || backgroundImages.length > 0) && <MediaBackground images={backgroundImages} videoUrl={backgroundVideo} />}
       {layout === 'blueprint' && <BlueprintGrid />}
       <div className="send-card-signature">
         <MotionSignature
@@ -81,15 +82,6 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
             <strong>KLYM</strong>
             <span>{sentDate}</span>
           </div>
-          {showColorGrade ? (
-            <span
-              className="send-card-grade send-card-grade-color"
-              style={{ background: project.gradeColor, borderColor: project.gradeColor }}
-              aria-label={`Hold color ${project.gradeColor}`}
-            />
-          ) : (
-            <span className="send-card-grade">{project.grade}</span>
-          )}
         </div>
         <div className="send-card-bottom">
           {reflection && <p className="send-card-reflection">"{reflection}"</p>}
@@ -99,7 +91,7 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
           </div>
           <div className="send-card-meta">{metaParts.join(' · ')}</div>
           <div className="send-card-footer">
-            <span>KLYM · MOTION SIGNATURE</span>
+            <span className={showColorGrade ? 'send-card-grade-pill is-color' : 'send-card-grade-pill'}>{showColorGrade ? project.gradeColor?.toUpperCase() : project.grade}</span>
             <span>{(signature.analysisMethod || signature.sourceType).toUpperCase()}</span>
           </div>
         </div>
@@ -108,7 +100,14 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
   );
 });
 
-function MediaBackground({ images }: { images: string[] }) {
+function MediaBackground({ images, videoUrl }: { images: string[]; videoUrl?: string }) {
+  if (videoUrl) {
+    return (
+      <div className="send-card-media-bg single">
+        <video src={videoUrl} muted playsInline autoPlay loop />
+      </div>
+    );
+  }
   if (images.length === 1) {
     return (
       <div className="send-card-media-bg single">
