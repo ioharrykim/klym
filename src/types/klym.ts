@@ -89,6 +89,7 @@ export interface MotionSignatureData {
   videoDuration: number;
   frameCount: number;
   backgroundFrameDataUrls?: string[];
+  videoDataUrl?: string;
   points: MotionPoint[];
   svgPath: string;
   style: MotionSignatureStyle;
