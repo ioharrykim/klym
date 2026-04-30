@@ -4,7 +4,7 @@ import type { MotionSignatureData, MotionSignatureStyle } from '../types/klym';
 
 export function useMotionSignature() {
   const [signatures, setSignatures] = useState<MotionSignatureData[]>(() =>
-    stripPrototypeSignatures(readJson<MotionSignatureData[]>(storageKeys.signatures, [])),
+    compactSignatures(stripPrototypeSignatures(readJson<MotionSignatureData[]>(storageKeys.signatures, []))),
   );
 
   useEffect(() => writeJson(storageKeys.signatures, signatures), [signatures]);
@@ -15,13 +15,14 @@ export function useMotionSignature() {
       id: uid('signature'),
       createdAt: new Date().toISOString(),
     };
-    setSignatures((current) => [next, ...current]);
-    return next;
+    const compact = compactSignature(next);
+    setSignatures((current) => [compact, ...current]);
+    return compact;
   }
 
   function updateSignature(id: string, patch: Partial<MotionSignatureData>) {
     setSignatures((current) =>
-      current.map((signature) => (signature.id === id ? { ...signature, ...patch } : signature)),
+      current.map((signature) => (signature.id === id ? compactSignature({ ...signature, ...patch }) : signature)),
     );
   }
 
@@ -64,4 +65,13 @@ const prototypeProjectIds = new Set([
 function stripPrototypeSignatures(signatures: MotionSignatureData[]) {
   if (signatures.some((signature) => signature.projectId && prototypeProjectIds.has(signature.projectId))) return [];
   return signatures;
+}
+
+function compactSignatures(signatures: MotionSignatureData[]) {
+  return signatures.map(compactSignature);
+}
+
+function compactSignature(signature: MotionSignatureData): MotionSignatureData {
+  const { videoDataUrl: _videoDataUrl, ...compact } = signature;
+  return compact;
 }

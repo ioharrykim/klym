@@ -49,7 +49,6 @@ export function MotionFlowScreen({
   const [frames, setFrames] = useState<MotionFrame[]>([]);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [videoDataUrl, setVideoDataUrl] = useState('');
   const [readySignature, setReadySignature] = useState<SignatureDraft | null>(null);
   const [manualPoints, setManualPoints] = useState<Record<string, MotionPoint>>({});
   const [notes, setNotes] = useState<string[]>([]);
@@ -72,7 +71,6 @@ export function MotionFlowScreen({
     setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
     setFrames([]);
-    setVideoDataUrl(await fileToDataUrl(file));
     setManualPoints({});
     setReadySignature(null);
     setNotes([]);
@@ -116,7 +114,6 @@ export function MotionFlowScreen({
         videoDuration: extracted.duration,
         frameCount: extracted.frames.length,
         backgroundFrameDataUrls: keyFrameDataUrls(extracted.frames),
-        videoDataUrl,
         points: composed.points,
         svgPath: composed.svgPath,
         style: signatureStyle,
@@ -168,7 +165,6 @@ export function MotionFlowScreen({
       videoDuration: duration,
       frameCount: frames.length,
       backgroundFrameDataUrls: keyFrameDataUrls(frames),
-      videoDataUrl,
       points: composed.points,
       svgPath: composed.svgPath,
       style: signatureStyle,
@@ -270,15 +266,6 @@ export function MotionFlowScreen({
       </div>
     </section>
   );
-}
-
-function fileToDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
-    reader.onerror = () => reject(new Error('Failed to read video file.'));
-    reader.readAsDataURL(file);
-  });
 }
 
 function UploadStep({
