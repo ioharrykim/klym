@@ -2131,25 +2131,7 @@ textarea:focus {
 
 .send-card-frame::before,
 .send-card-frame::after {
-  content: '';
-  position: absolute;
-  background: var(--accent);
-}
-
-.send-card-frame::before {
-  top: -1px;
-  left: -1px;
-  width: 14px;
-  height: 1px;
-  box-shadow: 0 13px 0 var(--accent);
-}
-
-.send-card-frame::after {
-  bottom: -1px;
-  right: -1px;
-  width: 14px;
-  height: 1px;
-  box-shadow: 0 -13px 0 var(--accent);
+  content: none;
 }
 
 .send-card-poster .send-card-frame {
@@ -2201,13 +2183,7 @@ textarea:focus {
 }
 
 .send-card-mark::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: -4px;
-  width: 16px;
-  height: 1px;
-  background: var(--accent);
+  content: none;
 }
 
 .send-card-mark strong {
@@ -2353,8 +2329,8 @@ textarea:focus {
 }
 
 .send-card-grade-pill.is-color {
-  border-color: rgba(255, 255, 255, 0.4);
-  color: var(--ink);
+  border-color: var(--grade-color, var(--accent));
+  color: var(--grade-color, var(--accent));
 }
 
 .send-card-footer span:last-child {

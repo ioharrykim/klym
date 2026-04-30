@@ -111,6 +111,12 @@ export async function exportElementAsVideo({
       pixelRatio: renderScale,
       backgroundColor: backgroundVideo ? 'transparent' : '#0A0A0B',
     });
+  } catch (error) {
+    if (!backgroundVideo) throw error;
+    console.warn('KLYM could not capture the card chrome for video export.', error);
+    rawCanvas = document.createElement('canvas');
+    rawCanvas.width = Math.max(1, Math.round(sourceRect.width * renderScale));
+    rawCanvas.height = Math.max(1, Math.round(sourceRect.height * renderScale));
   } finally {
     element.classList.remove(hideSignatureClass);
     element.classList.remove('send-card-media-hidden', 'send-card-export-overlay');
@@ -174,10 +180,21 @@ export async function exportElementAsVideo({
   });
 
   const points = scaledPoints(signature.points, SIGNATURE_VB_W, SIGNATURE_VB_H);
-  const totalDuration = durationMs + holdMs;
+  const videoDurationMs =
+    backgroundVideo && Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0
+      ? Math.min(Math.max(backgroundVideo.duration * 1000, 1400), 30000)
+      : 0;
+  const lineDurationMs = backgroundVideo ? videoDurationMs : durationMs;
+  const totalDuration = backgroundVideo ? videoDurationMs : durationMs + holdMs;
 
   if (backgroundVideo) {
     backgroundVideo.currentTime = 0;
+    const exportRate = backgroundVideo.duration * 1000 > totalDuration ? backgroundVideo.duration / (totalDuration / 1000) : 1;
+    try {
+      backgroundVideo.playbackRate = Number.isFinite(exportRate) && exportRate > 0 && exportRate <= 16 ? exportRate : 1;
+    } catch {
+      backgroundVideo.playbackRate = 1;
+    }
     await backgroundVideo.play().catch(() => undefined);
   }
   recorder.start(200);
@@ -188,7 +205,9 @@ export async function exportElementAsVideo({
   await new Promise<void>((resolve) => {
     function frame() {
       const elapsed = performance.now() - start;
-      const drawProgress = Math.min(1, elapsed / durationMs);
+      const drawProgress = backgroundVideo
+        ? videoProgress(backgroundVideo, elapsed, totalDuration)
+        : Math.min(1, elapsed / lineDurationMs);
       ctx!.clearRect(0, 0, targetWidth, targetHeight);
       if (backgroundVideo) {
         drawVideoBackground(ctx!, backgroundVideo, targetWidth, targetHeight);
@@ -235,14 +254,16 @@ async function prepareBackgroundVideo(url: string) {
   video.src = url;
   video.load();
   await metadataReady;
-  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-    await waitForMedia(video, 'loadeddata');
-  }
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) await waitForMedia(video, 'loadeddata').catch(() => undefined);
   return video;
 }
 
 function waitForMedia(video: HTMLVideoElement, eventName: string) {
   return new Promise<void>((resolve, reject) => {
+    if (mediaEventAlreadySatisfied(video, eventName)) {
+      resolve();
+      return;
+    }
     const timeout = window.setTimeout(() => {
       cleanup();
       reject(new Error('Source video timed out while preparing export.'));
@@ -265,6 +286,19 @@ function waitForMedia(video: HTMLVideoElement, eventName: string) {
   });
 }
 
+function mediaEventAlreadySatisfied(video: HTMLVideoElement, eventName: string) {
+  if (eventName === 'loadedmetadata') return video.readyState >= HTMLMediaElement.HAVE_METADATA;
+  if (eventName === 'loadeddata') return video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+  return false;
+}
+
+function videoProgress(video: HTMLVideoElement, elapsedMs: number, exportDurationMs: number) {
+  if (!Number.isFinite(video.duration) || video.duration <= 0) return Math.min(1, elapsedMs / exportDurationMs);
+  const naturalProgress = clamp(video.currentTime / video.duration, 0, 1);
+  if (naturalProgress > 0 || !video.paused) return naturalProgress;
+  return Math.min(1, elapsedMs / exportDurationMs);
+}
+
 function drawVideoBackground(
   ctx: CanvasRenderingContext2D,
   video: HTMLVideoElement,
@@ -282,6 +316,11 @@ function drawVideoBackground(
   const drawHeight = videoHeight * scale;
   const drawX = (targetWidth - drawWidth) / 2;
   const drawY = (targetHeight - drawHeight) / 2;
+
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    ctx.restore();
+    return;
+  }
 
   ctx.filter = 'saturate(0.95) contrast(1.08)';
   ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);

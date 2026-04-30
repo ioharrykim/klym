@@ -217,10 +217,19 @@ function DynamicSignature({
   animate: boolean;
   progress?: number;
 }) {
+  const pathStyle = pathProgressStyle(progress);
   return (
     <g className={animate ? 'signature-draw' : undefined}>
       {cruxPoint && <circle cx={cruxPoint.x} cy={cruxPoint.y} r="36" fill={accent} opacity="0.16" filter="url(#klymBlur)" />}
-      <path d={path} fill="none" stroke={ink} strokeOpacity="0.08" strokeWidth={baseStroke * 6} strokeLinecap="round" filter="url(#klymBlur)" />
+      <path
+        d={path}
+        fill="none"
+        stroke={ink}
+        strokeOpacity={progress === undefined ? 0.08 : 0.03}
+        strokeWidth={baseStroke * 6}
+        strokeLinecap="round"
+        filter="url(#klymBlur)"
+      />
       {points.slice(0, -1).map((point, index) => {
         const next = points[index + 1];
         const width = baseStroke + (point.velocity || 0.2) * 4 + (point.dyno || next.dyno ? 6 : 0);
@@ -243,7 +252,17 @@ function DynamicSignature({
           />
         );
       })}
-      <path d={path} fill="none" stroke={accent} strokeOpacity="0.26" strokeWidth="0.7" strokeLinecap="round" transform="translate(3,0)" />
+      <path
+        d={path}
+        fill="none"
+        stroke={accent}
+        strokeOpacity="0.26"
+        strokeWidth="0.7"
+        strokeLinecap="round"
+        transform="translate(3,0)"
+        pathLength={1}
+        style={pathStyle}
+      />
       {cruxPoint && <CruxMark point={cruxPoint} accent={accent} ink={ink} />}
     </g>
   );

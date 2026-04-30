@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import type {
   MotionSignatureData,
   Project,
@@ -42,6 +42,8 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
   ref,
 ) {
   const sentDate = formatDate(project.sentAt || project.updatedAt);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [videoProgress, setVideoProgress] = useState(0);
   const backgroundImages =
     backgroundMode === 'photo' && customBackgroundDataUrl
       ? [customBackgroundDataUrl]
@@ -51,9 +53,27 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
   const backgroundVideo = backgroundMode === 'video' ? signature.sourceVideoUrl || signature.videoDataUrl || '' : '';
   const signatureInk = textTone === 'dark' ? tokens.ink : tokens.paper;
   const showColorGrade = project.gradeMode === 'color' && Boolean(project.gradeColor);
-  const metaGrade = showColorGrade ? `COLOR ${project.gradeColor?.toUpperCase() || ''}`.trim() : project.grade;
+  const metaGrade = showColorGrade ? 'COLOR' : project.grade;
   const metaParts = [project.gymName, project.wallName, metaGrade].filter(Boolean) as string[];
-  if (project.sentAt) metaParts.push(`${projectDuration(project)}D`);
+  const lineProgress = backgroundVideo ? videoProgress : signatureProgress;
+
+  useEffect(() => {
+    if (!backgroundVideo) {
+      setVideoProgress(0);
+      return undefined;
+    }
+    let raf = 0;
+    const tick = () => {
+      const video = videoRef.current;
+      if (video && Number.isFinite(video.duration) && video.duration > 0) {
+        setVideoProgress((video.currentTime % video.duration) / video.duration);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [backgroundVideo]);
+
   return (
     <div
       ref={ref}
@@ -69,7 +89,9 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
         .filter(Boolean)
         .join(' ')}
     >
-      {(backgroundVideo || backgroundImages.length > 0) && <MediaBackground images={backgroundImages} videoUrl={backgroundVideo} />}
+      {(backgroundVideo || backgroundImages.length > 0) && (
+        <MediaBackground images={backgroundImages} videoUrl={backgroundVideo} videoRef={videoRef} />
+      )}
       {layout === 'blueprint' && <BlueprintGrid />}
       <div className="send-card-signature">
         <MotionSignature
@@ -78,7 +100,7 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
           animate={false}
           showGrid={false}
           ink={signatureInk}
-          progress={signatureProgress}
+          progress={lineProgress}
         />
       </div>
       <div className="send-card-frame" aria-hidden />
@@ -97,7 +119,12 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
           </div>
           <div className="send-card-meta">{metaParts.join(' · ')}</div>
           <div className="send-card-footer">
-            <span className={showColorGrade ? 'send-card-grade-pill is-color' : 'send-card-grade-pill'}>{showColorGrade ? project.gradeColor?.toUpperCase() : project.grade}</span>
+            <span
+              className={showColorGrade ? 'send-card-grade-pill is-color' : 'send-card-grade-pill'}
+              style={showColorGrade ? ({ '--grade-color': project.gradeColor } as CSSProperties) : undefined}
+            >
+              {showColorGrade ? 'COLOR' : project.grade}
+            </span>
             <span>{(signature.analysisMethod || signature.sourceType).toUpperCase()}</span>
           </div>
         </div>
@@ -106,11 +133,19 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
   );
 });
 
-function MediaBackground({ images, videoUrl }: { images: string[]; videoUrl?: string }) {
+function MediaBackground({
+  images,
+  videoUrl,
+  videoRef,
+}: {
+  images: string[];
+  videoUrl?: string;
+  videoRef?: RefObject<HTMLVideoElement>;
+}) {
   if (videoUrl) {
     return (
       <div className="send-card-media-bg single">
-        <video src={videoUrl} muted playsInline autoPlay loop aria-hidden="true" />
+        <video ref={videoRef} src={videoUrl} muted playsInline autoPlay loop aria-hidden="true" />
       </div>
     );
   }
@@ -142,12 +177,6 @@ function BlueprintGrid() {
       ))}
     </svg>
   );
-}
-
-function projectDuration(project: Project) {
-  const start = new Date(project.createdAt).getTime();
-  const end = new Date(project.sentAt || project.updatedAt).getTime();
-  return Math.max(1, Math.ceil((end - start) / 86400000));
 }
 
 function formatDate(iso: string) {
