@@ -101,6 +101,55 @@ button {
   color: #f4f1ea;
 }
 
+.language-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, 0.52);
+}
+
+.language-switch > div {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid #2e3035;
+  background: rgba(10, 10, 11, 0.72);
+}
+
+.language-switch button {
+  min-width: 34px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: #a4a7ad;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.language-switch button + button {
+  border-left: 1px solid #2e3035;
+}
+
+.language-switch button[data-active='true'] {
+  background: #ff5a1f;
+  color: #000;
+}
+
+.stage-language-switch {
+  position: fixed;
+  top: 72px;
+  right: 28px;
+  z-index: 2;
+}
+
 .phone-shell {
   width: min(390px, calc(100vw - 22px));
   height: min(844px, calc(100vh - 28px));
@@ -2564,7 +2613,7 @@ textarea:focus {
   border-top: 1px solid #2e3035;
 }
 
-.settings-list div {
+.settings-list > div {
   min-height: 54px;
   display: flex;
   align-items: center;
@@ -2585,6 +2634,14 @@ textarea:focus {
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.settings-language-switch {
+  margin-left: auto;
+}
+
+.settings-language-switch > span {
+  display: none;
 }
 
 .signature-labels,
@@ -2641,7 +2698,8 @@ textarea:focus {
   }
 
   .stage-mark,
-  .stage-meta {
+  .stage-meta,
+  .stage-language-switch {
     display: none;
   }
 

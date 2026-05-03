@@ -31,6 +31,7 @@ export const storageKeys = {
   signatures: 'klym.motionSignatures.v3',
   sendCards: 'klym.sendCards.v3',
   onboarding: 'klym.onboarding.v3',
+  language: 'klym.language.v1',
 };
 
 export function uid(prefix: string) {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { MotionSignature } from '../components/MotionSignature';
 import { AttemptForm, ProjectForm } from '../components/ProjectForm';
 import { Eyebrow, GradeChip, Icon, KButton, StatBlock, StatusPill } from '../components/UI';
+import { useI18n } from '../lib/i18n';
 import type { Attempt, AttemptDraft, MotionSignatureData, MotionSignatureStyle, Project, ProjectDraft } from '../types/klym';
 
 interface ProjectDetailScreenProps {
@@ -31,6 +32,7 @@ export function ProjectDetailScreen({
   onMarkSent,
   onMotion,
 }: ProjectDetailScreenProps) {
+  const { t, status, attemptResult } = useI18n();
   const [editing, setEditing] = useState(false);
   const [addingAttempt, setAddingAttempt] = useState(false);
 
@@ -40,10 +42,10 @@ export function ProjectDetailScreen({
         <div className="detail-hero">
           <MotionSignature data={signature} seed={project.seed} style={signature?.style || style} animate showGrid />
           <div className="detail-topbar">
-            <button type="button" onClick={onBack} aria-label="Back">
+            <button type="button" onClick={onBack} aria-label={t('projectDetail.back')}>
               <Icon name="arrow-left" />
             </button>
-            <button type="button" onClick={() => setEditing(true)} aria-label="Edit project">
+            <button type="button" onClick={() => setEditing(true)} aria-label={t('projectDetail.edit')}>
               <Icon name="pencil" />
             </button>
           </div>
@@ -58,33 +60,33 @@ export function ProjectDetailScreen({
         </div>
 
         <div className="stats-strip detail-stats">
-          <StatBlock label="ATTEMPTS" value={project.attemptsCount} />
-          <StatBlock label="DAYS" value={projectDays(project)} />
-          <StatBlock label="STATUS" value={project.status.toUpperCase()} />
+          <StatBlock label={t('common.attempts')} value={project.attemptsCount} />
+          <StatBlock label={t('common.days')} value={projectDays(project)} />
+          <StatBlock label={t('common.status')} value={status(project.status)} />
         </div>
 
-        <Eyebrow>BETA · NEXT TRY</Eyebrow>
+        <Eyebrow>{t('projectDetail.betaNext')}</Eyebrow>
         <div className="note-block">
-          <p>{project.betaNotes || 'No beta stored yet.'}</p>
+          <p>{project.betaNotes || t('projectDetail.noBeta')}</p>
           {project.nextAttemptStrategy && <b>{project.nextAttemptStrategy}</b>}
         </div>
 
-        <Eyebrow>PROJECT NOTES</Eyebrow>
+        <Eyebrow>{t('projectDetail.projectNotes')}</Eyebrow>
         <div className="note-block quiet">
-          <p>{project.notes || 'No notes yet.'}</p>
+          <p>{project.notes || t('projectDetail.noNotes')}</p>
         </div>
 
-        <Eyebrow>ATTEMPT LOG</Eyebrow>
+        <Eyebrow>{t('projectDetail.attemptLog')}</Eyebrow>
         <div className="attempt-list">
           {attempts.length === 0 ? (
-            <p className="muted-copy">No attempts logged yet.</p>
+            <p className="muted-copy">{t('projectDetail.noAttempts')}</p>
           ) : (
             attempts.map((attempt) => (
               <div key={attempt.id} className="attempt-row">
                 <span>{attempt.date.slice(5)}</span>
                 <div>
                   <b>
-                    {attempt.result.toUpperCase()} · {attempt.attemptCount} TRIES
+                    {attemptResult(attempt.result)} · {attempt.attemptCount} {t('common.tries')}
                   </b>
                   <p>{attempt.notes}</p>
                 </div>
@@ -96,7 +98,7 @@ export function ProjectDetailScreen({
 
       <div className="bottom-actions">
         <KButton variant="dark" icon="plus" onClick={() => setAddingAttempt(true)}>
-          TRY
+          {t('projectDetail.try')}
         </KButton>
         {project.status !== 'sent' ? (
           <KButton
@@ -107,11 +109,11 @@ export function ProjectDetailScreen({
               onMotion(project);
             }}
           >
-            MARK SENT · UPLOAD
+            {t('projectDetail.markSentUpload')}
           </KButton>
         ) : (
           <KButton variant="primary" icon="upload" onClick={() => onMotion(project)}>
-            UPLOAD SEND
+            {t('projectDetail.uploadSend')}
           </KButton>
         )}
       </div>
@@ -139,7 +141,7 @@ export function ProjectDetailScreen({
                 setEditing(false);
               }}
             >
-              ARCHIVE PROJECT
+              {t('common.archiveProject')}
             </button>
           </div>
         </div>

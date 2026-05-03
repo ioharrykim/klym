@@ -8,6 +8,7 @@ import type {
   SendCardTextTone,
   MotionSignatureStyle,
 } from '../types/klym';
+import { useI18n } from '../lib/i18n';
 import { tokens } from '../lib/tokens';
 import { MotionSignature } from './MotionSignature';
 
@@ -41,7 +42,8 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
   },
   ref,
 ) {
-  const sentDate = formatDate(project.sentAt || project.updatedAt);
+  const { language, locale } = useI18n();
+  const sentDate = formatDate(project.sentAt || project.updatedAt, locale);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoProgress, setVideoProgress] = useState(0);
   const backgroundImages =
@@ -53,7 +55,7 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
   const backgroundVideo = backgroundMode === 'video' ? signature.sourceVideoUrl || signature.videoDataUrl || '' : '';
   const signatureInk = textTone === 'dark' ? tokens.ink : tokens.paper;
   const showColorGrade = project.gradeMode === 'color' && Boolean(project.gradeColor);
-  const metaGrade = showColorGrade ? 'COLOR' : project.grade;
+  const metaGrade = showColorGrade ? (language === 'ko' ? '컬러' : 'COLOR') : project.grade;
   const metaParts = [project.gymName, project.wallName, metaGrade].filter(Boolean) as string[];
   const lineProgress = backgroundVideo ? videoProgress : signatureProgress;
 
@@ -180,8 +182,8 @@ function BlueprintGrid() {
   );
 }
 
-function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
+function formatDate(iso: string, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
     month: '2-digit',
     day: '2-digit',
     year: '2-digit',

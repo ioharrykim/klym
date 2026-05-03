@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { MotionSignature } from '../components/MotionSignature';
 import { EmptyState, Icon, KButton } from '../components/UI';
 import { GradeInput } from '../components/GradeInput';
+import { useI18n } from '../lib/i18n';
 import { extractFramesFromVideo } from '../lib/motion/extractFrames';
 import { detectMotionFromFrames } from '../lib/motion/poseDetection';
 import { composeMotionPath } from '../lib/motion/path';
@@ -40,6 +41,7 @@ export function MotionFlowScreen({
   onComplete,
   onQuickComplete,
 }: MotionFlowScreenProps) {
+  const { t, processingState } = useI18n();
   const [projectId, setProjectId] = useState(selectedProject?.id || projects[0]?.id || '');
   const project = projects.find((item) => item.id === projectId);
   const [signatureStyle, setSignatureStyle] = useState<MotionSignatureStyle>(style);
@@ -105,7 +107,7 @@ export function MotionFlowScreen({
 
       if (detection.failed) {
         setState('failed');
-        setError('Automatic detection failed. Use manual correction.');
+        setError(t('motion.autoFailed'));
         return;
       }
 
@@ -130,7 +132,7 @@ export function MotionFlowScreen({
       setProgress(100);
       setState('signature-ready');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Video processing failed.');
+      setError(err instanceof Error ? err.message : t('motion.videoFailed'));
       setState('failed');
     }
   }
@@ -177,7 +179,7 @@ export function MotionFlowScreen({
       analysisMethod: 'manual',
       confidenceScore: 1,
       motionEvents: detectMotionEvents(composed.points),
-      processingNotes: ['Signature generated from user-selected body-center points on sampled video frames.'],
+      processingNotes: [t('motion.manualNote')],
     });
     setProgress(100);
     setState('signature-ready');
@@ -193,23 +195,23 @@ export function MotionFlowScreen({
       <div className="motion-top">
         <button type="button" onClick={onBack}>
           <Icon name="x" size={16} />
-          CLOSE
+          {t('common.close')}
         </button>
-        <span>MOTION SIGNATURE / {stateLabel(state)}</span>
+        <span>{t('motion.header', { state: processingState(state) })}</span>
       </div>
 
       <div className="motion-body">
         {!quickMode && projects.length === 0 ? (
           <EmptyState
-            title="CREATE A PROJECT FIRST"
-            body="Motion Signatures attach to a real line. Add the gym, grade, and wall first, then upload the send video."
-            action={<KButton icon="plus" onClick={onCreateProject}>CREATE PROJECT</KButton>}
+            title={t('motion.createFirstTitle')}
+            body={t('motion.createFirstBody')}
+            action={<KButton icon="plus" onClick={onCreateProject}>{t('common.createProject')}</KButton>}
           />
         ) : (
           <>
             {!quickMode && (
               <label className="motion-project-select">
-                <span>PROJECT</span>
+                <span>{t('common.project')}</span>
                 <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
                   {projects.map((item) => (
                     <option key={item.id} value={item.id}>
@@ -222,8 +224,8 @@ export function MotionFlowScreen({
 
             {quickMode && (state === 'idle' || state === 'video-selected') && (
               <div className="quick-banner">
-                <span>QUICK SEND</span>
-                <p>Drop a send clip and KLYM builds a Motion Signature card. No project log required.</p>
+                <span>{t('dashboard.quickSend')}</span>
+                <p>{t('motion.quickBannerBody')}</p>
               </div>
             )}
 
@@ -292,21 +294,23 @@ function UploadStep({
   onProcess: () => void;
   quickMode?: boolean;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="upload-step">
       <div>
-        <h1>{quickMode ? 'DROP YOUR SEND CLIP.' : 'UPLOAD YOUR SEND VIDEO.'}</h1>
+        <h1>{quickMode ? t('motion.quickUploadTitle') : t('motion.uploadTitle')}</h1>
         <p>
           {quickMode
-            ? 'Pick a clip from your gallery — KLYM extracts the line and lets you finalize the card with a name and grade.'
-            : 'Your movement becomes a unique continuous line. Automatic detection runs first; manual correction is available if confidence drops.'}
+            ? t('motion.quickUploadBody')
+            : t('motion.uploadBody')}
         </p>
       </div>
       <label className={previewUrl ? 'video-drop has-preview' : 'video-drop'}>
         <input
           type="file"
           accept="video/*,.mp4,.mov,.m4v"
-          aria-label="Select a send video from your photo library"
+          aria-label={t('motion.selectVideoAria')}
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) onFile(file);
@@ -319,8 +323,8 @@ function UploadStep({
             <span>
               <Icon name="upload" size={26} />
             </span>
-            <strong>SELECT FROM GALLERY</strong>
-            <small>MP4 / MOV · sampled in-browser</small>
+            <strong>{t('motion.selectGallery')}</strong>
+            <small>{t('motion.videoHint')}</small>
           </>
         )}
       </label>
@@ -328,13 +332,13 @@ function UploadStep({
         <div className="video-file-row">
           <span>{selectedFile.name}</span>
           <KButton icon="bolt" onClick={onProcess}>
-            GENERATE SIGNATURE
+            {t('motion.generateSignature')}
           </KButton>
         </div>
       )}
       <div className="motion-callout">
-        <b>HOW IT WORKS</b>
-        <p>KLYM samples key frames, tracks the center of visual motion, then turns the video-derived points into a normalized SVG Motion Signature.</p>
+        <b>{t('motion.howItWorks')}</b>
+        <p>{t('motion.howItWorksBody')}</p>
       </div>
     </div>
   );
@@ -351,6 +355,9 @@ function ProcessingStep({
   frames: MotionFrame[];
   previewUrl: string;
 }) {
+  const { t, processingState, processingTitle, processSteps } = useI18n();
+  const progressState = state as Extract<MotionProcessingState, 'extracting-frames' | 'detecting-motion' | 'generating-signature'>;
+
   return (
     <div className="processing-step">
       <div className="scanner-window">
@@ -359,21 +366,21 @@ function ProcessingStep({
         ) : frames[0] ? (
           <img src={frames[0].dataUrl} alt="" />
         ) : (
-          <span>[ SOURCE VIDEO ]</span>
+          <span>{t('motion.sourceVideo')}</span>
         )}
         <div className="scanner-dim" />
         <i style={{ top: `${100 - progress}%` }} />
       </div>
-      <h1>{state === 'extracting-frames' ? 'EXTRACTING FRAMES' : state === 'detecting-motion' ? 'DETECTING MOTION' : 'GENERATING SIGNATURE'}</h1>
+      <h1>{processingTitle(progressState)}</h1>
       <div className="progress-readout">
-        <span>{stateLabel(state)}</span>
+        <span>{processingState(state)}</span>
         <b>{String(progress).padStart(3, '0')}%</b>
       </div>
       <div className="progress-line">
         <i style={{ width: `${progress}%` }} />
       </div>
       <div className="process-list">
-        {['VIDEO SELECTED', 'EXTRACTING FRAMES', 'DETECTING MOTION', 'GENERATING SIGNATURE'].map((label) => (
+        {processSteps.map((label) => (
           <span key={label}>{label}</span>
         ))}
       </div>
@@ -398,11 +405,13 @@ function ManualStep({
   onTap: (frame: MotionFrame, event: React.MouseEvent<HTMLButtonElement>) => void;
   onBuild: () => void;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="manual-step">
       <div className="failure-banner">
-        <b>{error || 'Automatic detection failed'}</b>
-        <p>Tap the climber&apos;s body center on at least three sampled frames. KLYM will generate the signature from those video-derived points.</p>
+        <b>{error || t('motion.manualError')}</b>
+        <p>{t('motion.manualHelp')}</p>
       </div>
       <div className="note-list">
         {notes.map((note) => (
@@ -414,7 +423,7 @@ function ManualStep({
           const point = manualPoints[frame.id];
           return (
             <button key={frame.id} type="button" onClick={(event) => onTap(frame, event)}>
-              <img src={frame.dataUrl} alt={`Sample frame ${frame.index + 1}`} />
+              <img src={frame.dataUrl} alt={t('motion.sampleFrame', { index: frame.index + 1 })} />
               <span>{frame.time.toFixed(1)}s</span>
               {point && <i style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }} />}
             </button>
@@ -422,7 +431,7 @@ function ManualStep({
         })}
       </div>
       <KButton icon="check" disabled={manualCount < 3} onClick={onBuild}>
-        GENERATE FROM {manualCount} POINTS
+        {t('motion.generateFromPoints', { count: manualCount })}
       </KButton>
     </div>
   );
@@ -449,6 +458,7 @@ function ReadyStep({
   onComplete: () => void;
   onQuickComplete?: (draft: ProjectDraft) => void;
 }) {
+  const { t, source, style: styleLabel, motionEvent } = useI18n();
   const styles: MotionSignatureStyle[] = useMemo(() => ['dynamic', 'refined', 'editorial', 'data'], []);
   const [quickDraft, setQuickDraft] = useState<ProjectDraft>({
     displayName: '',
@@ -475,34 +485,39 @@ function ReadyStep({
 
   return (
     <div className="ready-step">
-      <span className="ready-kicker">SIGNATURE READY · {signature.sourceType.toUpperCase()} · {Math.round(signature.confidenceScore * 100)}%</span>
-      <h1>YOUR LINE IS READY.</h1>
+      <span className="ready-kicker">
+        {t('motion.readyKicker', {
+          source: source(signature.sourceType),
+          score: Math.round(signature.confidenceScore * 100),
+        })}
+      </span>
+      <h1>{t('motion.readyTitle')}</h1>
       <VideoMotionPreview signature={signature} project={project} previewUrl={previewUrl} style={style} />
       {signature.motionEvents && signature.motionEvents.length > 0 && (
         <div className="motion-event-row">
           {signature.motionEvents.map((event) => (
             <span key={`${event.type}-${event.t}`}>
-              {event.label} · {Math.round(event.t * 100)}%
+              {motionEvent(event.type, event.label)} · {Math.round(event.t * 100)}%
             </span>
           ))}
         </div>
       )}
       <div className="style-picker">
-        <span>STYLE</span>
+        <span>{t('common.style')}</span>
         {styles.map((item) => (
           <button key={item} type="button" data-active={style === item} onClick={() => onStyle(item)}>
-            {item.toUpperCase()}
+            {styleLabel(item)}
           </button>
         ))}
       </div>
       {quickMode ? (
         <div className="quick-meta-form">
           <div className="quick-meta-head">
-            <span>FINISH THE CARD</span>
-            <h2>NAME THIS SEND.</h2>
+            <span>{t('motion.finishCard')}</span>
+            <h2>{t('motion.nameSend')}</h2>
           </div>
           <label>
-            <span>PROJECT NAME</span>
+            <span>{t('projectForm.projectName')}</span>
             <input
               value={quickDraft.displayName}
               onChange={(event) => updateQuick('displayName', event.target.value)}
@@ -512,7 +527,7 @@ function ReadyStep({
           </label>
           <div className="field-grid">
             <label>
-              <span>GYM (OPTIONAL)</span>
+              <span>{t('motion.gymOptional')}</span>
               <input
                 value={quickDraft.gymName}
                 onChange={(event) => updateQuick('gymName', event.target.value)}
@@ -520,7 +535,7 @@ function ReadyStep({
               />
             </label>
             <label>
-              <span>WALL (OPTIONAL)</span>
+              <span>{t('motion.wallOptional')}</span>
               <input
                 value={quickDraft.wallName}
                 onChange={(event) => updateQuick('wallName', event.target.value)}
@@ -529,7 +544,7 @@ function ReadyStep({
             </label>
           </div>
           <label className="grade-input-label">
-            <span>GRADE</span>
+            <span>{t('common.grade')}</span>
             <GradeInput
               mode={(quickDraft.gradeMode as GradeMode) || 'scale'}
               grade={quickDraft.grade}
@@ -547,7 +562,7 @@ function ReadyStep({
           </label>
           <div className="ready-actions">
             <KButton variant="ghost" icon="pencil" onClick={onManual}>
-              MANUAL FIX
+              {t('common.manualFix')}
             </KButton>
             <KButton
               icon="arrow-right"
@@ -562,17 +577,17 @@ function ReadyStep({
               }
               disabled={!quickCanSubmit}
             >
-              BUILD CARD
+              {t('common.buildCard')}
             </KButton>
           </div>
         </div>
       ) : (
         <div className="ready-actions">
           <KButton variant="ghost" icon="pencil" onClick={onManual}>
-            MANUAL CORRECTION
+            {t('common.manualCorrection')}
           </KButton>
           <KButton icon="arrow-right" onClick={onComplete}>
-            SAVE · BUILD CARD
+            {t('motion.saveBuildCard')}
           </KButton>
         </div>
       )}
@@ -591,6 +606,7 @@ function VideoMotionPreview({
   previewUrl: string;
   style: MotionSignatureStyle;
 }) {
+  const { t } = useI18n();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [progress, setProgress] = useState(0);
 
@@ -627,27 +643,14 @@ function VideoMotionPreview({
         strokeScale={1.12}
       />
       <div className="video-motion-info">
-        <span>{signature.frameCount} FRAMES</span>
-        <strong>{project?.displayName || 'SEND VIDEO'}</strong>
+        <span>{t('common.frames', { count: signature.frameCount })}</span>
+        <strong>{project?.displayName || t('common.sendVideo')}</strong>
         <p>
           {project ? `${project.gymName} / ${project.wallName} / ${project.grade}` : signature.videoName}
         </p>
       </div>
     </div>
   );
-}
-
-function stateLabel(state: MotionProcessingState) {
-  const labels: Record<MotionProcessingState, string> = {
-    idle: '01·UPLOAD',
-    'video-selected': '01·VIDEO SELECTED',
-    'extracting-frames': '02·FRAMES',
-    'detecting-motion': '03·DETECT',
-    'generating-signature': '04·GENERATE',
-    'signature-ready': '05·READY',
-    failed: 'MANUAL',
-  };
-  return labels[state];
 }
 
 function keyFrameDataUrls(frames: MotionFrame[]) {

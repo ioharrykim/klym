@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SendCardPreview } from '../components/SendCardPreview';
 import { EmptyState, Icon, KButton } from '../components/UI';
+import { useI18n } from '../lib/i18n';
 import { exportElementAsPng, exportElementAsVideo } from '../lib/sendCard/exportImage';
 import type {
   MotionSignatureData,
@@ -32,6 +33,7 @@ export function SendCardScreen({
   onMotion,
   onSaveCard,
 }: SendCardScreenProps) {
+  const { t, language, source, format: formatLabel, background, layout: layoutLabel, style: styleLabel, textTone: textToneLabel } = useI18n();
   const sentProjects = projects.filter((project) => project.status === 'sent');
   const selectableProjects = sentProjects.length ? sentProjects : projects;
   const [projectId, setProjectId] = useState(initialProject?.id || selectableProjects[0]?.id || '');
@@ -44,7 +46,9 @@ export function SendCardScreen({
   const [format, setFormat] = useState<SendCardFormat>('square');
   const [layout, setLayout] = useState<SendCardLayout>('hero');
   const [style, setStyle] = useState<MotionSignatureStyle>(signature?.style || 'data');
-  const [reflection, setReflection] = useState('Held the swing. Kept the line.');
+  const defaultReflection = language === 'ko' ? t('send.defaultReflectionKo') : t('send.defaultReflection');
+  const defaultReflectionRef = useRef(defaultReflection);
+  const [reflection, setReflection] = useState(defaultReflection);
   const [backgroundMode, setBackgroundMode] = useState<SendCardBackgroundMode>(preferredBackgroundMode(signature));
   const [textTone, setTextTone] = useState<SendCardTextTone>('light');
   const [customBackgroundDataUrl, setCustomBackgroundDataUrl] = useState('');
@@ -53,6 +57,11 @@ export function SendCardScreen({
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoStatus, setVideoStatus] = useState('');
   const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setReflection((current) => (current === defaultReflectionRef.current ? defaultReflection : current));
+    defaultReflectionRef.current = defaultReflection;
+  }, [defaultReflection]);
 
   const availableSignatures = useMemo(() => {
     if (!project) return [];
@@ -96,7 +105,7 @@ export function SendCardScreen({
     if (!cardRef.current || !project || !signature) return;
     setVideoExporting(true);
     setVideoProgress(0);
-    setVideoStatus('PREPARING');
+    setVideoStatus(t('send.preparing'));
     persistCard();
     try {
       const result = await exportElementAsVideo({
@@ -108,13 +117,17 @@ export function SendCardScreen({
         textTone,
         onProgress: (phase, progress) => {
           setVideoProgress(progress);
-          setVideoStatus(phase === 'preparing' ? 'PREPARING' : phase === 'recording' ? 'RECORDING' : 'ENCODING');
+          setVideoStatus(phase === 'preparing' ? t('send.preparing') : phase === 'recording' ? t('send.recording') : t('send.encoding'));
         },
       });
-      setVideoStatus(result.delivery === 'shared' ? 'SHARED' : `SAVED ${result.fileName.split('.').pop()?.toUpperCase() || 'VIDEO'}`);
+      setVideoStatus(
+        result.delivery === 'shared'
+          ? t('send.shared')
+          : t('send.saved', { type: result.fileName.split('.').pop()?.toUpperCase() || 'VIDEO' }),
+      );
     } catch (error) {
       console.error(error);
-      setVideoStatus(error instanceof Error ? error.message.toUpperCase() : 'EXPORT FAILED');
+      setVideoStatus(error instanceof Error ? error.message : t('send.exportFailed'));
     } finally {
       setVideoExporting(false);
       window.setTimeout(() => {
@@ -129,30 +142,30 @@ export function SendCardScreen({
       <div className="motion-top">
         <button type="button" onClick={onBack}>
           <Icon name="arrow-left" size={16} />
-          BACK
+          {t('common.back')}
         </button>
-        <span>SEND CARD / EXPORT</span>
+        <span>{t('send.header')}</span>
       </div>
 
       <div className="send-builder">
         <div className="send-builder-head">
-          <h1>SEND CARD</h1>
-          <p>Built for feed covers, stories, and a premium send archive.</p>
+          <h1>{t('send.title')}</h1>
+          <p>{t('send.body')}</p>
         </div>
 
         {!project ? (
-          <EmptyState title="NO SENT PROJECTS" body="Mark a project as sent and generate a Motion Signature first." />
+          <EmptyState title={t('send.noProjectTitle')} body={t('send.noProjectBody')} />
         ) : !signature ? (
           <EmptyState
-            title="NO MOTION SIGNATURE"
-            body="This project needs a saved video-derived Motion Signature before export."
-            action={<KButton icon="upload" onClick={() => onMotion(project)}>GENERATE SIGNATURE</KButton>}
+            title={t('send.noSignatureTitle')}
+            body={t('send.noSignatureBody')}
+            action={<KButton icon="upload" onClick={() => onMotion(project)}>{t('send.generateSignature')}</KButton>}
           />
         ) : (
           <>
             <div className="builder-controls">
               <label>
-                <span>PROJECT</span>
+                <span>{t('common.project')}</span>
                 <select
                   value={projectId}
                   onChange={(event) => {
@@ -174,7 +187,7 @@ export function SendCardScreen({
                 </select>
               </label>
               <label>
-                <span>SIGNATURE</span>
+                <span>{t('common.signature')}</span>
                 <select
                   value={signature.id}
                   onChange={(event) => {
@@ -191,7 +204,7 @@ export function SendCardScreen({
                 >
                   {availableSignatures.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.sourceType.toUpperCase()} · {Math.round(item.confidenceScore * 100)}% · {new Date(item.createdAt).toLocaleDateString()}
+                      {source(item.sourceType)} · {Math.round(item.confidenceScore * 100)}% · {new Date(item.createdAt).toLocaleDateString()}
                     </option>
                   ))}
                 </select>
@@ -201,7 +214,7 @@ export function SendCardScreen({
             <div className="segmented-row segmented-row-tri">
               {(['square', 'feed-tall', 'story'] as const).map((item) => (
                 <button key={item} type="button" data-active={format === item} onClick={() => setFormat(item)}>
-                  {item === 'square' ? 'FEED 1:1' : item === 'feed-tall' ? 'FEED 4:5' : 'STORY 9:16'}
+                  {formatLabel(item)}
                 </button>
               ))}
             </div>
@@ -223,7 +236,7 @@ export function SendCardScreen({
 
             <div className="builder-controls">
               <label>
-                <span>REFLECTION</span>
+                <span>{t('send.reflection')}</span>
                 <textarea value={reflection} onChange={(event) => setReflection(event.target.value)} maxLength={84} rows={2} />
               </label>
             </div>
@@ -240,13 +253,7 @@ export function SendCardScreen({
                   }
                   onClick={() => setBackgroundMode(item)}
                 >
-                  {item === 'video'
-                    ? 'MOTION VIDEO'
-                    : item === 'signature'
-                      ? 'GRAPHIC BG'
-                      : item === 'video-frames'
-                        ? 'VIDEO CUTS'
-                        : 'PHOTO BG'}
+                  {background(item)}
                 </button>
               ))}
             </div>
@@ -262,14 +269,14 @@ export function SendCardScreen({
                     setCustomBackgroundDataUrl(await readImageAsDataUrl(file));
                   }}
                 />
-                <span>{customBackgroundDataUrl ? 'PHOTO BACKGROUND LOADED' : 'SELECT ALBUM PHOTO'}</span>
+                <span>{customBackgroundDataUrl ? t('send.photoLoaded') : t('send.selectAlbumPhoto')}</span>
               </label>
             )}
 
             <div className="chip-scroll">
               {(['hero', 'blueprint', 'poster'] as const).map((item) => (
                 <button key={item} type="button" data-active={layout === item} onClick={() => setLayout(item)}>
-                  {item.toUpperCase()}
+                  {layoutLabel(item)}
                 </button>
               ))}
             </div>
@@ -277,7 +284,7 @@ export function SendCardScreen({
             <div className="chip-scroll">
               {(['dynamic', 'refined', 'editorial', 'data'] as const).map((item) => (
                 <button key={item} type="button" data-active={style === item} onClick={() => setStyle(item)}>
-                  {item.toUpperCase()}
+                  {styleLabel(item)}
                 </button>
               ))}
             </div>
@@ -285,17 +292,17 @@ export function SendCardScreen({
             <div className="chip-scroll chip-scroll-compact">
               {(['light', 'dark'] as const).map((item) => (
                 <button key={item} type="button" data-active={textTone === item} onClick={() => setTextTone(item)}>
-                  {item === 'light' ? 'TEXT WHITE' : 'TEXT BLACK'}
+                  {textToneLabel(item)}
                 </button>
               ))}
             </div>
 
             <div className="export-actions">
               <KButton variant="ghost" icon="download" onClick={exportCard} disabled={exporting || videoExporting}>
-                {exporting ? 'EXPORTING' : 'EXPORT PNG'}
+                {exporting ? t('send.exporting') : t('send.exportPng')}
               </KButton>
               <KButton icon="video" onClick={exportVideo} disabled={exporting || videoExporting}>
-                {videoExporting ? 'CAPTURING' : 'SAVE VIDEO'}
+                {videoExporting ? t('send.capturing') : t('send.saveVideo')}
               </KButton>
             </div>
             {(videoExporting || videoStatus) && (

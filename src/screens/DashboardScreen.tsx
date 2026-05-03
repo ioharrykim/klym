@@ -1,5 +1,6 @@
 import { MotionSignature } from '../components/MotionSignature';
 import { EmptyState, Eyebrow, GradeChip, Icon, KButton, StatBlock, StatusPill } from '../components/UI';
+import { useI18n } from '../lib/i18n';
 import type { Attempt, MotionSignatureData, MotionSignatureStyle, Project } from '../types/klym';
 
 interface DashboardScreenProps {
@@ -33,7 +34,9 @@ export function DashboardScreen({
   onMotion,
   onQuickSend,
 }: DashboardScreenProps) {
+  const { t, locale, status, attemptResult } = useI18n();
   const focus = stats.focusProject;
+  const dateLabel = new Intl.DateTimeFormat(locale, { month: '2-digit', day: '2-digit', year: '2-digit' }).format(new Date());
 
   if (projects.length === 0) {
     return (
@@ -41,9 +44,9 @@ export function DashboardScreen({
         <header className="dashboard-top">
           <div>
             <strong>KLYM</strong>
-            <span>KEEP LINES, YOUR MOVE</span>
+            <span>{t('app.tagline')}</span>
           </div>
-          <button className="square-icon" type="button" onClick={onProjects} aria-label="Create first project">
+          <button className="square-icon" type="button" onClick={onProjects} aria-label={t('projects.create')}>
             <Icon name="plus" />
           </button>
         </header>
@@ -52,31 +55,25 @@ export function DashboardScreen({
           <div className="first-run-signature">
             <MotionSignature seed={4371} style={style} animate showGrid />
           </div>
-          <span>KLYM // VIDEO → SEND CARD</span>
-          <h1>
-            TURN YOUR SEND
-            <br />
-            INTO A CARD.
-          </h1>
-          <p>
-            Drop a clip, KLYM extracts the line as a Motion Signature, and you publish a premium card. No login, no upload — everything runs on your device.
-          </p>
+          <span>{t('dashboard.firstRunKicker')}</span>
+          <h1>{t('dashboard.firstRunTitle')}</h1>
+          <p>{t('dashboard.firstRunBody')}</p>
           <div className="first-run-actions">
             <KButton icon="upload" onClick={onQuickSend}>
-              QUICK SEND
+              {t('dashboard.quickSend')}
             </KButton>
             <KButton variant="ghost" icon="plus" onClick={onProjects}>
-              FULL PROJECT LOG
+              {t('dashboard.fullProjectLog')}
             </KButton>
           </div>
         </div>
 
         <div className="first-run-steps">
           {[
-            ['01', 'DROP CLIP', 'MP4 / MOV from your gallery.'],
-            ['02', 'AUTO TRACE', 'Pose-based Motion Signature.'],
-            ['03', 'NAME & GRADE', 'V scale or hold color.'],
-            ['04', 'EXPORT', 'PNG or 1440p video card.'],
+            ['01', t('dashboard.step1Title'), t('dashboard.step1Body')],
+            ['02', t('dashboard.step2Title'), t('dashboard.step2Body')],
+            ['03', t('dashboard.step3Title'), t('dashboard.step3Body')],
+            ['04', t('dashboard.step4Title'), t('dashboard.step4Body')],
           ].map(([index, title, body]) => (
             <div key={index}>
               <span>{index}</span>
@@ -94,7 +91,7 @@ export function DashboardScreen({
       <header className="dashboard-top">
         <div>
           <strong>KLYM</strong>
-          <span>{new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }).format(new Date())}</span>
+          <span>{dateLabel}</span>
         </div>
         <button className="square-icon" type="button" onClick={() => onMotion(focus)}>
           <Icon name="bolt" />
@@ -102,8 +99,8 @@ export function DashboardScreen({
       </header>
 
       <div className="dashboard-copy">
-        <h1>WHAT LINE WILL YOU DRAW?</h1>
-        <p>{projects.length} lines stored locally · {attempts.length} attempt logs</p>
+        <h1>{t('dashboard.title')}</h1>
+        <p>{t('dashboard.localSummary', { projects: projects.length, attempts: attempts.length })}</p>
       </div>
 
       <button type="button" className="quick-send-hero" onClick={onQuickSend}>
@@ -111,19 +108,19 @@ export function DashboardScreen({
           <MotionSignature seed={9183} style={style} animate showGrid={false} strokeScale={0.9} />
         </div>
         <div className="quick-send-hero-copy">
-          <span>QUICK SEND</span>
-          <strong>VIDEO → CARD</strong>
-          <p>Drop a clip, name the line, export a 1440p card. No project log needed.</p>
+          <span>{t('dashboard.quickSend')}</span>
+          <strong>{t('dashboard.quickHeroTitle')}</strong>
+          <p>{t('dashboard.quickHeroBody')}</p>
         </div>
         <div className="quick-send-hero-cta">
           <Icon name="upload" size={14} />
-          START
+          {t('common.start')}
         </div>
       </button>
 
       {focus ? (
         <div className="section-pad">
-          <Eyebrow>TODAY&apos;S FOCUS</Eyebrow>
+          <Eyebrow>{t('dashboard.focus')}</Eyebrow>
           <button className="focus-card" type="button" onClick={() => onProject(focus)}>
             <div className="focus-signature">
               <MotionSignature
@@ -134,7 +131,7 @@ export function DashboardScreen({
                 animate={false}
                 strokeScale={0.72}
               />
-              <span>BETA · {focus.attemptsCount} ATTEMPTS</span>
+              <span>{t('dashboard.betaAttempts', { count: focus.attemptsCount })}</span>
             </div>
             <div className="focus-info">
               <div className="card-chip-row">
@@ -144,45 +141,45 @@ export function DashboardScreen({
               <h2>{focus.localName || focus.displayName}</h2>
               <p>{focus.gymName} / {focus.wallName}</p>
               <div className="stat-row">
-                <StatBlock label="ATTEMPTS" value={focus.attemptsCount} />
-                <StatBlock label="DAYS" value={projectDays(focus)} />
+                <StatBlock label={t('common.attempts')} value={focus.attemptsCount} />
+                <StatBlock label={t('common.days')} value={projectDays(focus)} />
               </div>
             </div>
             <div className="focus-action">
-              CONTINUE PROJECT
+              {t('dashboard.continueProject')}
               <Icon name="arrow-right" size={14} />
             </div>
           </button>
         </div>
       ) : (
         <EmptyState
-          title="NO PROJECTS YET"
-          body="Create your first line and KLYM will start tracking the work."
-          action={<KButton icon="plus" onClick={onProjects}>CREATE PROJECT</KButton>}
+          title={t('dashboard.noProjectsTitle')}
+          body={t('dashboard.noProjectsBody')}
+          action={<KButton icon="plus" onClick={onProjects}>{t('common.createProject')}</KButton>}
         />
       )}
 
       <div className="quick-actions">
         <button type="button" onClick={() => onMotion(focus)}>
           <Icon name="upload" />
-          <strong>UPLOAD TO PROJECT</strong>
-          <span>ATTACH SIGNATURE</span>
+          <strong>{t('dashboard.uploadToProject')}</strong>
+          <span>{t('dashboard.attachSignature')}</span>
         </button>
         <button type="button" onClick={onProjects}>
           <Icon name="plus" />
-          <strong>ADD PROJECT</strong>
-          <span>NEW LINE</span>
+          <strong>{t('dashboard.addProject')}</strong>
+          <span>{t('dashboard.newLine')}</span>
         </button>
       </div>
 
       <div className="stats-strip">
-        <StatBlock label="OPEN" value={stats.openCount} />
-        <StatBlock label="CLOSE" value={stats.closeCount} />
-        <StatBlock label="SENT" value={stats.sentCount} />
-        <StatBlock label="TRIES" value={stats.attempts30d} />
+        <StatBlock label={t('common.open')} value={stats.openCount} />
+        <StatBlock label={status('close')} value={stats.closeCount} />
+        <StatBlock label={t('common.sent')} value={stats.sentCount} />
+        <StatBlock label={t('common.tries')} value={stats.attempts30d} />
       </div>
 
-      <Eyebrow right={<button className="link-button" type="button" onClick={onProjects}>VIEW ALL</button>}>RECENT SENDS</Eyebrow>
+      <Eyebrow right={<button className="link-button" type="button" onClick={onProjects}>{t('common.viewAll')}</button>}>{t('dashboard.recentSends')}</Eyebrow>
       <div className="signature-row">
         {(stats.recentSends.length ? stats.recentSends : projects.slice(0, 4)).map((project) => {
           const signature = signaturesByProject.get(project.id);
@@ -198,7 +195,7 @@ export function DashboardScreen({
         })}
       </div>
 
-      <Eyebrow>RECENT ACTIVITY</Eyebrow>
+      <Eyebrow>{t('dashboard.recentActivity')}</Eyebrow>
       <div className="activity-list">
         {stats.recentAttempts.map((attempt) => {
           const project = projects.find((item) => item.id === attempt.projectId);
@@ -206,9 +203,9 @@ export function DashboardScreen({
             <div key={attempt.id} className="activity-row">
               <span>{attempt.date.slice(5)}</span>
               <div>
-                <b>{attempt.result.toUpperCase()}</b>
-                <strong>{project?.displayName || 'PROJECT'}</strong>
-                <p>{attempt.notes || `${attempt.attemptCount} attempts logged`}</p>
+                <b>{attemptResult(attempt.result)}</b>
+                <strong>{project?.displayName || t('common.project')}</strong>
+                <p>{attempt.notes || t('dashboard.attemptsLogged', { count: attempt.attemptCount })}</p>
               </div>
             </div>
           );

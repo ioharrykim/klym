@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useI18n } from '../lib/i18n';
 import type { GradeMode } from '../types/klym';
 
 const SWATCHES = [
@@ -25,6 +26,7 @@ interface GradeInputProps {
 }
 
 export function GradeInput({ mode, grade, color, onChange, compact }: GradeInputProps) {
+  const { t } = useI18n();
   const colorRef = useRef<HTMLInputElement>(null);
 
   function setMode(next: GradeMode) {
@@ -50,7 +52,7 @@ export function GradeInput({ mode, grade, color, onChange, compact }: GradeInput
 
   return (
     <div className={`grade-input ${compact ? 'grade-input-compact' : ''}`}>
-      <div className="grade-toggle" role="tablist" aria-label="Grade type">
+      <div className="grade-toggle" role="tablist" aria-label={t('grade.type')}>
         <button
           type="button"
           role="tab"
@@ -58,7 +60,7 @@ export function GradeInput({ mode, grade, color, onChange, compact }: GradeInput
           data-active={mode === 'scale'}
           onClick={() => setMode('scale')}
         >
-          V SCALE
+          {t('grade.vScale')}
         </button>
         <button
           type="button"
@@ -67,7 +69,7 @@ export function GradeInput({ mode, grade, color, onChange, compact }: GradeInput
           data-active={mode === 'color'}
           onClick={() => setMode('color')}
         >
-          COLOR
+          {t('grade.color')}
         </button>
       </div>
       {mode === 'scale' ? (
@@ -88,14 +90,14 @@ export function GradeInput({ mode, grade, color, onChange, compact }: GradeInput
                 data-active={swatch.toLowerCase() === (color || '').toLowerCase()}
                 style={{ background: swatch }}
                 onClick={() => setColor(swatch)}
-                aria-label={`Pick ${swatch}`}
+                aria-label={t('grade.pickColor', { color: swatch })}
               />
             ))}
             <button
               type="button"
               className="grade-swatch grade-swatch-custom"
               onClick={() => colorRef.current?.click()}
-              aria-label="Pick custom color"
+              aria-label={t('grade.pickCustom')}
             >
               +
               <input

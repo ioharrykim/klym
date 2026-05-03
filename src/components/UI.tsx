@@ -21,7 +21,8 @@ import {
   Video,
   X,
 } from 'lucide-react';
-import { gradeColors, statusLabels, tokens } from '../lib/tokens';
+import { useI18n, type Language } from '../lib/i18n';
+import { gradeColors, tokens } from '../lib/tokens';
 import type { ProjectStatus } from '../types/klym';
 
 export type IconName =
@@ -125,17 +126,20 @@ function StatusBar() {
 }
 
 export function Stage({ children }: PropsWithChildren) {
+  const { t } = useI18n();
+
   return (
     <main className="stage">
       <div className="stage-mark">
         KLYM
-        <span>KEEP LINES, YOUR MOVE</span>
+        <span>{t('app.tagline')}</span>
       </div>
       <div className="stage-meta">
-        MVP · v0.1
+        {t('stage.version')}
         <br />
-        <b>LOCAL-FIRST</b>
+        <b>{t('stage.localFirst')}</b>
       </div>
+      <LanguageSwitch className="stage-language-switch" />
       {children}
     </main>
   );
@@ -147,12 +151,13 @@ interface TabBarProps {
 }
 
 export function TabBar({ active, onTab }: TabBarProps) {
+  const { t } = useI18n();
   const tabs = [
-    { id: 'home', label: 'HOME', icon: 'home' as IconName },
-    { id: 'projects', label: 'PROJECTS', icon: 'grid' as IconName },
-    { id: 'send', label: 'SEND', icon: 'plus' as IconName, big: true },
-    { id: 'sessions', label: 'SESSIONS', icon: 'list' as IconName },
-    { id: 'profile', label: 'ME', icon: 'user' as IconName },
+    { id: 'home', label: t('tab.home'), icon: 'home' as IconName },
+    { id: 'projects', label: t('tab.projects'), icon: 'grid' as IconName },
+    { id: 'send', label: t('tab.send'), icon: 'plus' as IconName, big: true },
+    { id: 'sessions', label: t('tab.sessions'), icon: 'list' as IconName },
+    { id: 'profile', label: t('tab.me'), icon: 'user' as IconName },
   ];
   return (
     <nav className="tab-bar" aria-label="Primary">
@@ -185,13 +190,15 @@ export function ScreenHeader({
   onBack?: () => void;
   right?: ReactNode;
 }) {
+  const { t } = useI18n();
+
   return (
     <header className="screen-header">
       <div>
         {onBack && (
           <button type="button" className="back-link" onClick={onBack}>
             <Icon name="arrow-left" size={14} />
-            BACK
+            {t('common.back')}
           </button>
         )}
         <h1>{title}</h1>
@@ -234,6 +241,7 @@ export function GradeChip({ grade }: { grade: string }) {
 }
 
 export function StatusPill({ status }: { status: ProjectStatus }) {
+  const { status: statusLabel } = useI18n();
   const color =
     status === 'sent'
       ? tokens.ok
@@ -242,7 +250,34 @@ export function StatusPill({ status }: { status: ProjectStatus }) {
         : status === 'archived'
           ? tokens.concrete
           : tokens.accent;
-  return <Chip color={color}>{statusLabels[status]}</Chip>;
+  return <Chip color={color}>{statusLabel(status)}</Chip>;
+}
+
+export function LanguageSwitch({ className = '' }: { className?: string }) {
+  const { language, setLanguage, t } = useI18n();
+  const options: Array<{ id: Language; label: string }> = [
+    { id: 'ko', label: 'KO' },
+    { id: 'en', label: 'EN' },
+  ];
+
+  return (
+    <div className={`language-switch ${className}`} aria-label={t('language.label')}>
+      <span>{t('language.label')}</span>
+      <div>
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            data-active={language === option.id}
+            onClick={() => setLanguage(option.id)}
+            aria-label={option.id === 'ko' ? t('language.korean') : t('language.english')}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function KButton({
