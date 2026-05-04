@@ -115,6 +115,7 @@ export function SendCardScreen({
         fileName: `klym-${fileSlug()}-${format}.mp4`,
         backgroundVideoUrl: backgroundMode === 'video' ? getSignatureVideoUrl(signature) : '',
         textTone,
+        style,
         onProgress: (phase, progress) => {
           setVideoProgress(progress);
           setVideoStatus(phase === 'preparing' ? t('send.preparing') : phase === 'recording' ? t('send.recording') : t('send.encoding'));

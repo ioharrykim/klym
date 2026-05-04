@@ -166,6 +166,32 @@ export function scaledPoints(points: MotionPoint[], width = 280, height = 380): 
   }));
 }
 
+export function fitPointsToViewport(
+  points: MotionPoint[],
+  width = 280,
+  height = 380,
+  paddingRatio = 0.12,
+): MotionPoint[] {
+  if (points.length < 2) return points;
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+  const boundsWidth = Math.max(1, maxX - minX);
+  const boundsHeight = Math.max(1, maxY - minY);
+  const paddingX = width * paddingRatio;
+  const paddingY = height * paddingRatio;
+  const fitScale = Math.min((width - paddingX * 2) / boundsWidth, (height - paddingY * 2) / boundsHeight);
+  const centerX = minX + boundsWidth / 2;
+  const centerY = minY + boundsHeight / 2;
+
+  return points.map((point) => ({
+    ...point,
+    x: clamp((point.x - centerX) * fitScale + width / 2, paddingX, width - paddingX),
+    y: clamp((point.y - centerY) * fitScale + height / 2, paddingY, height - paddingY),
+  }));
+}
+
 export function normalizePoints(points: MotionPoint[], width: number, height: number): MotionPoint[] {
   return points.map((point) => ({
     ...point,

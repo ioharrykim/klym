@@ -3,18 +3,18 @@ import { useI18n } from '../lib/i18n';
 import type { GradeMode } from '../types/klym';
 
 const SWATCHES = [
-  '#FFFFFF',
-  '#0A0A0B',
-  '#FF3344',
-  '#FF5A1F',
-  '#FFD23F',
-  '#9DFF4A',
-  '#22C55E',
-  '#4AA8FF',
-  '#1E40AF',
-  '#B266FF',
-  '#FF66B2',
-  '#A78B6F',
+  { value: '#FFFFFF', name: 'White', nameKo: '흰색' },
+  { value: '#0A0A0B', name: 'Black', nameKo: '검정' },
+  { value: '#FF3344', name: 'Red', nameKo: '빨강' },
+  { value: '#FF5A1F', name: 'Orange', nameKo: '주황' },
+  { value: '#FFD23F', name: 'Yellow', nameKo: '노랑' },
+  { value: '#9DFF4A', name: 'Lime', nameKo: '라임' },
+  { value: '#22C55E', name: 'Green', nameKo: '초록' },
+  { value: '#4AA8FF', name: 'Blue', nameKo: '파랑' },
+  { value: '#1E40AF', name: 'Navy', nameKo: '남색' },
+  { value: '#B266FF', name: 'Purple', nameKo: '보라' },
+  { value: '#FF66B2', name: 'Pink', nameKo: '분홍' },
+  { value: '#A78B6F', name: 'Wood', nameKo: '우드' },
 ];
 
 interface GradeInputProps {
@@ -26,7 +26,7 @@ interface GradeInputProps {
 }
 
 export function GradeInput({ mode, grade, color, onChange, compact }: GradeInputProps) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const colorRef = useRef<HTMLInputElement>(null);
 
   function setMode(next: GradeMode) {
@@ -35,7 +35,7 @@ export function GradeInput({ mode, grade, color, onChange, compact }: GradeInput
       onChange({
         mode: 'color',
         grade: 'COLOR',
-        color: color || SWATCHES[3],
+        color: color || SWATCHES[3].value,
       });
     } else {
       onChange({
@@ -84,13 +84,13 @@ export function GradeInput({ mode, grade, color, onChange, compact }: GradeInput
           <div className="grade-swatch-row">
             {SWATCHES.map((swatch) => (
               <button
-                key={swatch}
+                key={swatch.value}
                 type="button"
                 className="grade-swatch"
-                data-active={swatch.toLowerCase() === (color || '').toLowerCase()}
-                style={{ background: swatch }}
-                onClick={() => setColor(swatch)}
-                aria-label={t('grade.pickColor', { color: swatch })}
+                data-active={swatch.value.toLowerCase() === (color || '').toLowerCase()}
+                style={{ background: swatch.value }}
+                onClick={() => setColor(swatch.value)}
+                aria-label={t('grade.pickNamedColor', { name: language === 'ko' ? swatch.nameKo : swatch.name })}
               />
             ))}
             <button

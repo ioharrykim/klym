@@ -628,6 +628,9 @@ button {
   line-height: 0.98;
   letter-spacing: 0;
   font-weight: 800;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  text-wrap: balance;
 }
 
 .onboarding-panel p,
@@ -752,9 +755,13 @@ button {
 .first-run-hero h1 {
   position: relative;
   margin: 10px 0 0;
-  font-size: 40px;
-  line-height: 0.96;
+  max-width: 460px;
+  font-size: 36px;
+  line-height: 1.02;
   font-weight: 800;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  text-wrap: balance;
 }
 
 .first-run-hero p {
@@ -852,6 +859,17 @@ button {
   margin: 12px 0 0;
   font-size: 19px;
   line-height: 1.15;
+  word-break: keep-all;
+}
+
+.line-alias {
+  display: block;
+  margin-top: 5px;
+  color: #ff5a1f;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
 }
 
 .focus-info p,
@@ -1114,6 +1132,26 @@ button {
   padding: 0 20px 20px;
 }
 
+.empty-inline {
+  margin: 0 20px 20px;
+  border: 1px solid #2e3035;
+  background: #16171a;
+  padding: 18px;
+}
+
+.empty-inline b {
+  display: block;
+  color: #e6e2d8;
+  font-size: 15px;
+}
+
+.empty-inline p {
+  margin: 8px 0 0;
+  color: #a4a7ad;
+  line-height: 1.45;
+  font-size: 13px;
+}
+
 .activity-row {
   display: flex;
   gap: 12px;
@@ -1280,6 +1318,7 @@ textarea:focus {
   min-height: 32px;
   font-size: 13px;
   line-height: 1.2;
+  word-break: keep-all;
 }
 
 .project-card-body span,
@@ -1387,9 +1426,16 @@ textarea:focus {
 }
 
 .editor-actions {
+  position: sticky;
+  bottom: -28px;
+  z-index: 4;
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  margin: 0 -20px -28px;
+  padding: 12px 20px calc(14px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(22, 23, 26, 0.72), #16171a 28%);
+  border-top: 1px solid #2e3035;
 }
 
 .editor-actions .k-button {
@@ -1400,7 +1446,7 @@ textarea:focus {
   position: absolute;
   left: 20px;
   right: 20px;
-  bottom: 20px;
+  bottom: calc(86px + env(safe-area-inset-bottom));
 }
 
 .archive-strip button {
@@ -1468,6 +1514,7 @@ textarea:focus {
   margin: 10px 0 0;
   font-size: 31px;
   line-height: 1.05;
+  word-break: keep-all;
 }
 
 .detail-title p {
@@ -1614,6 +1661,44 @@ textarea:focus {
   cursor: pointer;
   overflow: hidden;
   position: relative;
+}
+
+.environment-toggle {
+  display: grid;
+  gap: 8px;
+}
+
+.environment-toggle > span {
+  color: #6b6e75;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.environment-toggle > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.environment-toggle button {
+  min-height: 38px;
+  border: 1px solid #2e3035;
+  background: #0a0a0b;
+  color: #e6e2d8;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.environment-toggle button[data-active='true'] {
+  border-color: #ff5a1f;
+  background: #ff5a1f;
+  color: #000;
 }
 
 .video-drop input {
@@ -1955,6 +2040,29 @@ textarea:focus {
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.08em;
+}
+
+.motion-analysis-row span[data-status='send'],
+.motion-analysis-row span[data-status='topout'] {
+  border-color: rgba(105, 211, 143, 0.45);
+  color: #9be3b0;
+}
+
+.motion-analysis-row span[data-status='fall'] {
+  border-color: rgba(255, 90, 31, 0.55);
+  color: #ff8b63;
+}
+
+.motion-color-chip {
+  gap: 6px;
+}
+
+.motion-color-chip i {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(244, 241, 234, 0.28);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.16);
 }
 
 .style-picker {

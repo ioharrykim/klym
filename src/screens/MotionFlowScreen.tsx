@@ -7,6 +7,7 @@ import { extractFramesFromVideo } from '../lib/motion/extractFrames';
 import { detectMotionFromFrames } from '../lib/motion/poseDetection';
 import { composeMotionPath } from '../lib/motion/path';
 import type {
+  ClimbEnvironment,
   GradeMode,
   MotionFrame,
   MotionEvent,
@@ -42,8 +43,9 @@ export function MotionFlowScreen({
   onQuickComplete,
 }: MotionFlowScreenProps) {
   const { t, processingState } = useI18n();
-  const [projectId, setProjectId] = useState(selectedProject?.id || projects[0]?.id || '');
-  const project = projects.find((item) => item.id === projectId);
+  const [projectId, setProjectId] = useState(quickMode ? '' : selectedProject?.id || projects[0]?.id || '');
+  const project = quickMode ? undefined : projects.find((item) => item.id === projectId);
+  const [environment, setEnvironment] = useState<ClimbEnvironment>(selectedProject?.environment || 'indoor');
   const [signatureStyle, setSignatureStyle] = useState<MotionSignatureStyle>(style);
   const [state, setState] = useState<MotionProcessingState>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -58,8 +60,12 @@ export function MotionFlowScreen({
   const preserveVideoUrlRef = useRef(false);
 
   useEffect(() => {
-    setProjectId(selectedProject?.id || projects[0]?.id || '');
-  }, [projects, selectedProject]);
+    setProjectId(quickMode ? '' : selectedProject?.id || projects[0]?.id || '');
+  }, [projects, quickMode, selectedProject]);
+
+  useEffect(() => {
+    setEnvironment(project?.environment || 'indoor');
+  }, [project?.environment, project?.id]);
 
   useEffect(() => {
     return () => {
@@ -88,9 +94,9 @@ export function MotionFlowScreen({
     try {
       setState('extracting-frames');
       const extracted = await extractFramesFromVideo(selectedFile, {
-        count: 32,
-        maxWidth: 640,
-        quality: 0.82,
+        count: 40,
+        maxWidth: 720,
+        quality: 0.86,
         trimStartRatio: 0.02,
         trimEndRatio: 0.98,
         onProgress: (value) => setProgress(Math.round(value * 40)),
@@ -101,7 +107,7 @@ export function MotionFlowScreen({
 
       setState('detecting-motion');
       setProgress(56);
-      const detection = await detectMotionFromFrames(extracted.frames, extracted.duration);
+      const detection = await detectMotionFromFrames(extracted.frames, extracted.duration, environment);
       setNotes(detection.notes);
       setProgress(76);
 
@@ -125,8 +131,15 @@ export function MotionFlowScreen({
         style: signatureStyle,
         sourceType: 'auto',
         analysisMethod: detection.method,
+        environment,
+        trackingMode: detection.trackingMode,
+        problemStyle: detection.problemStyle,
+        completionStatus: detection.completionStatus,
+        topHoldColor: detection.topHoldColor,
+        fallAt: detection.fallAt,
+        finishConfidence: detection.finishConfidence,
         confidenceScore: detection.confidenceScore,
-        motionEvents: detectMotionEvents(composed.points),
+        motionEvents: detectMotionEvents(composed.points, detection.completionStatus, detection.fallAt, environment),
         processingNotes: detection.notes,
       });
       setProgress(100);
@@ -177,8 +190,12 @@ export function MotionFlowScreen({
       style: signatureStyle,
       sourceType: state === 'failed' ? 'manual' : 'assisted',
       analysisMethod: 'manual',
+      environment,
+      trackingMode: 'body-center',
+      problemStyle: 'unknown',
+      completionStatus: 'unknown',
       confidenceScore: 1,
-      motionEvents: detectMotionEvents(composed.points),
+      motionEvents: detectMotionEvents(composed.points, 'unknown', undefined, environment),
       processingNotes: [t('motion.manualNote')],
     });
     setProgress(100);
@@ -233,6 +250,8 @@ export function MotionFlowScreen({
               <UploadStep
                 selectedFile={selectedFile}
                 previewUrl={previewUrl}
+                environment={environment}
+                onEnvironment={setEnvironment}
                 onFile={handleFile}
                 onProcess={processVideo}
                 quickMode={quickMode}
@@ -284,12 +303,16 @@ export function MotionFlowScreen({
 function UploadStep({
   selectedFile,
   previewUrl,
+  environment,
+  onEnvironment,
   onFile,
   onProcess,
   quickMode = false,
 }: {
   selectedFile: File | null;
   previewUrl: string;
+  environment: ClimbEnvironment;
+  onEnvironment: (environment: ClimbEnvironment) => void;
   onFile: (file: File) => void;
   onProcess: () => void;
   quickMode?: boolean;
@@ -306,6 +329,7 @@ function UploadStep({
             : t('motion.uploadBody')}
         </p>
       </div>
+      <EnvironmentToggle value={environment} onChange={onEnvironment} />
       <label className={previewUrl ? 'video-drop has-preview' : 'video-drop'}>
         <input
           type="file"
@@ -339,6 +363,30 @@ function UploadStep({
       <div className="motion-callout">
         <b>{t('motion.howItWorks')}</b>
         <p>{t('motion.howItWorksBody')}</p>
+      </div>
+    </div>
+  );
+}
+
+function EnvironmentToggle({
+  value,
+  onChange,
+}: {
+  value: ClimbEnvironment;
+  onChange: (environment: ClimbEnvironment) => void;
+}) {
+  const { t, environment } = useI18n();
+  const options: ClimbEnvironment[] = ['indoor', 'outdoor'];
+
+  return (
+    <div className="environment-toggle" role="group" aria-label={t('projectForm.environment')}>
+      <span>{t('projectForm.environment')}</span>
+      <div>
+        {options.map((option) => (
+          <button key={option} type="button" data-active={value === option} onClick={() => onChange(option)}>
+            {environment(option)}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -458,12 +506,22 @@ function ReadyStep({
   onComplete: () => void;
   onQuickComplete?: (draft: ProjectDraft) => void;
 }) {
-  const { t, source, style: styleLabel, motionEvent } = useI18n();
+  const {
+    t,
+    source,
+    style: styleLabel,
+    motionEvent,
+    trackingMode,
+    problemStyle,
+    environment: environmentLabel,
+    completionStatus,
+  } = useI18n();
   const styles: MotionSignatureStyle[] = useMemo(() => ['dynamic', 'refined', 'editorial', 'data'], []);
   const [quickDraft, setQuickDraft] = useState<ProjectDraft>({
     displayName: '',
     localName: '',
     gymName: '',
+    environment: signature.environment || 'indoor',
     wallName: '',
     grade: 'V6',
     gradeMode: 'scale',
@@ -493,6 +551,32 @@ function ReadyStep({
       </span>
       <h1>{t('motion.readyTitle')}</h1>
       <VideoMotionPreview signature={signature} project={project} previewUrl={previewUrl} style={style} />
+      {(signature.environment || signature.completionStatus || signature.topHoldColor || signature.fallAt !== undefined) && (
+        <div className="motion-event-row motion-analysis-row">
+          {signature.environment && <span>{environmentLabel(signature.environment)}</span>}
+          {signature.completionStatus && (
+            <span data-status={signature.completionStatus}>
+              {completionStatus(signature.completionStatus)}
+              {signature.finishConfidence !== undefined ? ` · ${Math.round(signature.finishConfidence * 100)}%` : ''}
+            </span>
+          )}
+          {signature.topHoldColor && (
+            <span className="motion-color-chip">
+              <i style={{ background: signature.topHoldColor }} />
+              {t('motion.topHold')}
+            </span>
+          )}
+          {signature.fallAt !== undefined && (
+            <span>{t('motion.fallAt', { progress: Math.round(signature.fallAt * 100) })}</span>
+          )}
+        </div>
+      )}
+      {(signature.problemStyle || signature.trackingMode) && (
+        <div className="motion-event-row">
+          {signature.problemStyle && <span>{problemStyle(signature.problemStyle)}</span>}
+          {signature.trackingMode && <span>{trackingMode(signature.trackingMode)}</span>}
+        </div>
+      )}
       {signature.motionEvents && signature.motionEvents.length > 0 && (
         <div className="motion-event-row">
           {signature.motionEvents.map((event) => (
@@ -664,7 +748,12 @@ function keyFrameDataUrls(frames: MotionFrame[]) {
     .map((frame) => frame.dataUrl);
 }
 
-function detectMotionEvents(points: MotionPoint[]): MotionEvent[] {
+function detectMotionEvents(
+  points: MotionPoint[],
+  completionStatus: MotionSignatureData['completionStatus'] = 'unknown',
+  fallAt?: number,
+  environment: ClimbEnvironment = 'indoor',
+): MotionEvent[] {
   if (points.length === 0) return [];
   const velocities = points.map((point, index) => {
     if (index === 0) return 0;
@@ -672,7 +761,29 @@ function detectMotionEvents(points: MotionPoint[]): MotionEvent[] {
     return Math.hypot(point.x - prev.x, point.y - prev.y);
   });
   const cruxIndex = velocities.reduce((best, value, index) => (value > velocities[best] ? index : best), 0);
-  const topout = points.reduce((best, point, index) => (point.y < points[best].y ? index : best), 0);
+  const highpoint = points.reduce((best, point, index) => (point.y < points[best].y ? index : best), 0);
+  const finishEvent: MotionEvent =
+    completionStatus === 'fall'
+      ? {
+          type: 'fall',
+          t: fallAt ?? points[Math.min(points.length - 1, highpoint + 1)]?.t ?? 1,
+          label: 'FALL',
+          confidence: 0.7,
+        }
+      : completionStatus === 'send'
+        ? {
+            type: 'match',
+            t: points[highpoint]?.t ?? 1,
+            label: 'MATCH',
+            confidence: points[highpoint]?.confidence ?? 0.72,
+          }
+        : {
+            type: 'topout',
+            t: points[highpoint]?.t ?? 1,
+            label: environment === 'outdoor' ? 'TOP OUT' : 'HIGHPOINT',
+            confidence: points[highpoint]?.confidence ?? 0.7,
+          };
+
   return [
     { type: 'start', t: points[0].t, label: 'START', confidence: points[0].confidence ?? 1 },
     {
@@ -681,11 +792,6 @@ function detectMotionEvents(points: MotionPoint[]): MotionEvent[] {
       label: points[cruxIndex]?.dyno ? 'DYNO / POWER MOVE' : 'CRUX',
       confidence: points[cruxIndex]?.confidence ?? 0.7,
     },
-    {
-      type: 'topout',
-      t: points[topout]?.t ?? 1,
-      label: 'TOP OUT',
-      confidence: points[topout]?.confidence ?? 0.7,
-    },
+    finishEvent,
   ];
 }

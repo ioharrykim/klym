@@ -135,10 +135,11 @@ export function DashboardScreen({
             </div>
             <div className="focus-info">
               <div className="card-chip-row">
-                <GradeChip grade={focus.grade} />
+                <GradeChip grade={focus.grade} color={focus.gradeColor} />
                 <StatusPill status={focus.status} />
               </div>
               <h2>{focus.localName || focus.displayName}</h2>
+              {focus.localName && <small className="line-alias">{focus.displayName}</small>}
               <p>{focus.gymName} / {focus.wallName}</p>
               <div className="stat-row">
                 <StatBlock label={t('common.attempts')} value={focus.attemptsCount} />

@@ -9,8 +9,14 @@ export function SessionsScreen({ attempts, projects }: { attempts: Attempt[]; pr
     <section className="screen scroll-screen with-tabs">
       <ScreenHeader title={t('sessions.title')} subtitle={t('sessions.subtitle', { count: attempts.length })} />
       <Eyebrow>{t('sessions.recentAttempts')}</Eyebrow>
-      <div className="activity-list section-pad">
-        {attempts.map((attempt) => {
+      {attempts.length === 0 ? (
+        <div className="empty-inline section-pad">
+          <b>{t('sessions.emptyTitle')}</b>
+          <p>{t('sessions.emptyBody')}</p>
+        </div>
+      ) : (
+        <div className="activity-list section-pad">
+          {attempts.map((attempt) => {
           const project = projects.find((item) => item.id === attempt.projectId);
           return (
             <div key={attempt.id} className="activity-row">
@@ -22,8 +28,9 @@ export function SessionsScreen({ attempts, projects }: { attempts: Attempt[]; pr
               </div>
             </div>
           );
-        })}
-      </div>
+          })}
+        </div>
+      )}
     </section>
   );
 }
@@ -64,12 +71,12 @@ export function ProfileScreen({
         </div>
         <div>
           <span>{t('common.videoFiles')}</span>
-          <b>{t('common.notStored')}</b>
+          <b>{t('profile.videoFilesValue')}</b>
         </div>
         <div>
           <span>{t('common.export')}</span>
           <b>
-            <Icon name="download" size={14} /> PNG
+            <Icon name="download" size={14} /> PNG / MP4
           </b>
         </div>
       </div>

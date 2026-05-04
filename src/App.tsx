@@ -53,7 +53,8 @@ export default function App() {
 
   function handleTab(tab: string) {
     if (tab === 'send') {
-      startQuickSend();
+      setQuickMode(false);
+      setScreen('sendcard');
       return;
     }
     setQuickMode(false);
@@ -107,7 +108,6 @@ export default function App() {
             onDelete={projectsApi.deleteProject}
             onArchive={projectsApi.archiveProject}
             onAddAttempt={projectsApi.addAttempt}
-            onMarkSent={projectsApi.markProjectSent}
             onMotion={(project) => goto('motion', project)}
           />
         )}
@@ -123,13 +123,20 @@ export default function App() {
               const saved = signaturesApi.saveSignature(draft);
               setActiveSignature(saved);
               if (project) {
-                projectsApi.markProjectSent(project.id);
+                if (isCompletion(saved)) {
+                  projectsApi.markProjectSent(project.id);
+                } else {
+                  projectsApi.updateProject(project.id, { status: 'close' });
+                }
                 setActiveProjectId(project.id);
               }
               goto('sendcard', project);
             }}
             onQuickComplete={(draft, projectDraft) => {
-              const project = projectsApi.createProject({ ...projectDraft, status: 'sent' });
+              const project = projectsApi.createProject({
+                ...projectDraft,
+                status: isCompletion(draft) ? 'sent' : 'close',
+              });
               const saved = signaturesApi.saveSignature({ ...draft, projectId: project.id });
               setActiveSignature(saved);
               setActiveProjectId(project.id);
@@ -164,4 +171,8 @@ export default function App() {
       </PhoneShell>
     </Stage>
   );
+}
+
+function isCompletion(signature: Pick<MotionSignatureData, 'completionStatus'>) {
+  return ['send', 'topout'].includes(signature.completionStatus || '');
 }

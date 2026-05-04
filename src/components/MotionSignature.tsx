@@ -1,6 +1,14 @@
 import type { CSSProperties } from 'react';
 import type { MotionSignatureData, MotionSignatureStyle, MotionPoint } from '../types/klym';
-import { clamp, generateSeedPath, motionPointAtProgress, partialSmoothPath, scaledPoints, smoothPath } from '../lib/signature';
+import {
+  clamp,
+  fitPointsToViewport,
+  generateSeedPath,
+  motionPointAtProgress,
+  partialSmoothPath,
+  scaledPoints,
+  smoothPath,
+} from '../lib/signature';
 import { tokens } from '../lib/tokens';
 
 const VB_W = 280;
@@ -17,6 +25,7 @@ interface MotionSignatureProps {
   animate?: boolean;
   strokeScale?: number;
   progress?: number;
+  centerInView?: boolean;
   className?: string;
 }
 
@@ -31,11 +40,13 @@ export function MotionSignature({
   animate = false,
   strokeScale = 1,
   progress,
+  centerInView = false,
   className,
 }: MotionSignatureProps) {
   const seedPath = data ? null : generateSeedPath(seed, VB_W, VB_H);
-  const points = data ? scaledPoints(data.points, VB_W, VB_H) : seedPath?.points || [];
-  const path = data ? data.svgPath : smoothPath(points);
+  const rawPoints = data ? scaledPoints(data.points, VB_W, VB_H) : seedPath?.points || [];
+  const points = centerInView ? fitPointsToViewport(rawPoints, VB_W, VB_H, 0.12) : rawPoints;
+  const path = data && !centerInView ? data.svgPath : smoothPath(points);
   const visiblePath = progress === undefined ? path : partialSmoothPath(points, progress);
   const cruxPoints = points.filter((point) => point.dyno);
   const cruxPoint = activeSpotlightPoint(points, cruxPoints, progress);

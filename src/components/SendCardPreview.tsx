@@ -42,7 +42,7 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
   },
   ref,
 ) {
-  const { language, locale } = useI18n();
+  const { language, locale, trackingMode: trackingModeLabel, completionStatus } = useI18n();
   const sentDate = formatDate(project.sentAt || project.updatedAt, locale);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoProgress, setVideoProgress] = useState(0);
@@ -57,6 +57,12 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
   const showColorGrade = project.gradeMode === 'color' && Boolean(project.gradeColor);
   const metaGrade = showColorGrade ? (language === 'ko' ? '컬러' : 'COLOR') : project.grade;
   const metaParts = [project.gymName, project.wallName, metaGrade].filter(Boolean) as string[];
+  const analysisLabel =
+    signature.completionStatus && signature.completionStatus !== 'unknown'
+      ? completionStatus(signature.completionStatus)
+      : signature.trackingMode
+        ? trackingModeLabel(signature.trackingMode)
+        : (signature.analysisMethod || signature.sourceType).toUpperCase();
   const lineProgress = backgroundVideo ? videoProgress : signatureProgress;
 
   useEffect(() => {
@@ -103,6 +109,7 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
           showGrid={false}
           ink={signatureInk}
           progress={lineProgress}
+          centerInView
         />
       </div>
       <div className="send-card-frame" aria-hidden />
@@ -128,7 +135,7 @@ export const SendCardPreview = forwardRef<HTMLDivElement, SendCardPreviewProps>(
             >
               {showColorGrade ? '' : project.grade}
             </span>
-            <span>{(signature.analysisMethod || signature.sourceType).toUpperCase()}</span>
+            <span>{analysisLabel}</span>
           </div>
         </div>
       </div>

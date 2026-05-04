@@ -116,7 +116,7 @@ export function ProjectsScreen({ projects, signaturesByProject, style, onProject
               <span className="grade-strip" />
               <div>
                 <div className="card-chip-row">
-                  <GradeChip grade={project.grade} />
+                  <GradeChip grade={project.grade} color={project.gradeColor} />
                   <StatusPill status={project.status} />
                 </div>
                 <strong>{project.displayName}</strong>
@@ -162,13 +162,13 @@ function ProjectGridCard({
       <div className="project-card-visual">
         <MotionSignature data={signature} seed={project.seed} style={signature?.style || style} showGrid={false} strokeScale={0.62} />
         <div className="card-chip-row">
-          <GradeChip grade={project.grade} />
+          <GradeChip grade={project.grade} color={project.gradeColor} />
           {project.status === 'sent' && <StatusPill status="sent" />}
         </div>
       </div>
       <div className="project-card-body">
         <strong>{project.localName || project.displayName}</strong>
-        <span>{project.gymName} · {project.wallName}</span>
+        <span>{project.localName ? `${project.displayName} · ` : ''}{project.gymName} · {project.wallName}</span>
         <p>{project.attemptsCount} {t('common.tries')} · {status(project.status)}</p>
       </div>
     </button>

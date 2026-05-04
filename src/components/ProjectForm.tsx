@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useI18n } from '../lib/i18n';
-import type { AttemptDraft, AttemptResult, GradeMode, Project, ProjectDraft, ProjectStatus } from '../types/klym';
+import type {
+  AttemptDraft,
+  AttemptResult,
+  ClimbEnvironment,
+  GradeMode,
+  Project,
+  ProjectDraft,
+  ProjectStatus,
+} from '../types/klym';
 import { GradeInput } from './GradeInput';
 import { KButton } from './UI';
 
@@ -21,6 +29,7 @@ export function ProjectForm({
   const { t, status: statusLabel } = useI18n();
   const [draft, setDraft] = useState<ProjectDraft>(() => ({
     gymName: project?.gymName || 'THE CLIMB · SEONGSU',
+    environment: project?.environment || 'indoor',
     grade: project?.grade || 'V6',
     gradeMode: project?.gradeMode || 'scale',
     gradeColor: project?.gradeColor,
@@ -76,6 +85,13 @@ export function ProjectForm({
         <label>
           <span>{t('projectForm.gym')}</span>
           <input value={draft.gymName} onChange={(event) => update('gymName', event.target.value)} placeholder="THE CLIMB · SEONGSU" />
+        </label>
+        <label>
+          <span>{t('projectForm.environment')}</span>
+          <select value={draft.environment || 'indoor'} onChange={(event) => update('environment', event.target.value as ClimbEnvironment)}>
+            <option value="indoor">{t('environment.indoor')}</option>
+            <option value="outdoor">{t('environment.outdoor')}</option>
+          </select>
         </label>
         <label>
           <span>{t('projectForm.wall')}</span>

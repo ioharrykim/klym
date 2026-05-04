@@ -15,7 +15,6 @@ interface ProjectDetailScreenProps {
   onDelete: (projectId: string) => void;
   onArchive: (projectId: string) => void;
   onAddAttempt: (draft: AttemptDraft) => void;
-  onMarkSent: (projectId: string) => void;
   onMotion: (project: Project) => void;
 }
 
@@ -29,7 +28,6 @@ export function ProjectDetailScreen({
   onDelete,
   onArchive,
   onAddAttempt,
-  onMarkSent,
   onMotion,
 }: ProjectDetailScreenProps) {
   const { t, status, attemptResult } = useI18n();
@@ -51,11 +49,12 @@ export function ProjectDetailScreen({
           </div>
           <div className="detail-title">
             <div className="card-chip-row">
-              <GradeChip grade={project.grade} />
+              <GradeChip grade={project.grade} color={project.gradeColor} />
               <StatusPill status={project.status} />
             </div>
             <h1>{project.localName || project.displayName}</h1>
             <p>{project.gymName} / {project.wallName}</p>
+            {project.localName && <small className="line-alias">{project.displayName}</small>}
           </div>
         </div>
 
@@ -104,10 +103,7 @@ export function ProjectDetailScreen({
           <KButton
             variant="primary"
             icon="check"
-            onClick={() => {
-              onMarkSent(project.id);
-              onMotion(project);
-            }}
+            onClick={() => onMotion(project)}
           >
             {t('projectDetail.markSentUpload')}
           </KButton>

@@ -236,8 +236,11 @@ export function Chip({ children, color, active = false }: PropsWithChildren<{ co
   );
 }
 
-export function GradeChip({ grade }: { grade: string }) {
-  return <Chip color={gradeColors[grade] || tokens.accent}>{grade}</Chip>;
+export function GradeChip({ grade, color }: { grade: string; color?: string }) {
+  const { language } = useI18n();
+  const isColorGrade = grade === 'COLOR';
+  const label = isColorGrade && language === 'ko' ? '컬러' : grade;
+  return <Chip color={color || gradeColors[grade] || tokens.accent}>{label}</Chip>;
 }
 
 export function StatusPill({ status }: { status: ProjectStatus }) {

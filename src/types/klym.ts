@@ -9,10 +9,12 @@ export type AttemptResult =
   | 'dnf';
 
 export type GradeMode = 'scale' | 'color';
+export type ClimbEnvironment = 'indoor' | 'outdoor';
 
 export interface Project {
   id: string;
   gymName: string;
+  environment?: ClimbEnvironment;
   grade: string;
   gradeMode?: GradeMode;
   gradeColor?: string;
@@ -45,9 +47,12 @@ export type MotionSignatureStyle = 'dynamic' | 'refined' | 'editorial' | 'data';
 
 export type MotionSignatureSource = 'auto' | 'assisted' | 'manual';
 export type MotionAnalysisMethod = 'pose' | 'pixel-motion' | 'manual';
+export type MotionTrackingMode = 'body-center' | 'hands' | 'feet' | 'crux-wrist';
+export type MotionProblemStyle = 'slab' | 'vertical' | 'overhang' | 'coordination' | 'unknown';
+export type MotionCompletionStatus = 'send' | 'fall' | 'attempt' | 'topout' | 'unknown';
 
 export interface MotionEvent {
-  type: 'start' | 'crux' | 'dyno' | 'topout';
+  type: 'start' | 'crux' | 'dyno' | 'match' | 'topout' | 'fall';
   t: number;
   label: string;
   confidence: number;
@@ -96,6 +101,13 @@ export interface MotionSignatureData {
   style: MotionSignatureStyle;
   sourceType: MotionSignatureSource;
   analysisMethod?: MotionAnalysisMethod;
+  environment?: ClimbEnvironment;
+  trackingMode?: MotionTrackingMode;
+  problemStyle?: MotionProblemStyle;
+  completionStatus?: MotionCompletionStatus;
+  topHoldColor?: string;
+  fallAt?: number;
+  finishConfidence?: number;
   confidenceScore: number;
   motionEvents?: MotionEvent[];
   processingNotes: string[];
@@ -122,6 +134,7 @@ export interface SendCard {
 
 export interface ProjectDraft {
   gymName: string;
+  environment?: ClimbEnvironment;
   grade: string;
   gradeMode?: GradeMode;
   gradeColor?: string;

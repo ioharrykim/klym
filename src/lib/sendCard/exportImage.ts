@@ -1,7 +1,7 @@
 import { toPng, toCanvas } from 'html-to-image';
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer';
-import type { MotionPoint, MotionSignatureData, SendCardFormat, SendCardTextTone } from '../../types/klym';
-import { clamp, motionPointAtProgress, partialSmoothPath, scaledPoints } from '../signature';
+import type { MotionPoint, MotionSignatureData, MotionSignatureStyle, SendCardFormat, SendCardTextTone } from '../../types/klym';
+import { clamp, fitPointsToViewport, motionPointAtProgress, partialSmoothPath, scaledPoints, smoothPath } from '../signature';
 
 const SIGNATURE_VB_W = 280;
 const SIGNATURE_VB_H = 380;
@@ -72,6 +72,7 @@ interface VideoExportOptions {
   fps?: number;
   backgroundVideoUrl?: string;
   textTone?: SendCardTextTone;
+  style?: MotionSignatureStyle;
   accent?: string;
   ink?: string;
   onProgress?: (phase: 'preparing' | 'recording' | 'encoding', progress: number) => void;
@@ -95,6 +96,7 @@ export async function exportElementAsVideo({
   fps = 60,
   backgroundVideoUrl,
   textTone = 'light',
+  style = signature.style,
   accent = '#ff5a1f',
   ink = textTone === 'dark' ? '#0a0a0b' : '#f4f1ea',
   onProgress,
@@ -158,7 +160,7 @@ export async function exportElementAsVideo({
     ctx.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
   }
 
-  const points = scaledPoints(signature.points, SIGNATURE_VB_W, SIGNATURE_VB_H);
+  const points = fitPointsToViewport(scaledPoints(signature.points, SIGNATURE_VB_W, SIGNATURE_VB_H), SIGNATURE_VB_W, SIGNATURE_VB_H, 0.12);
   const videoDurationMs =
     backgroundVideo && Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0
       ? Math.min(Math.max(backgroundVideo.duration * 1000, 1400), 30000)
@@ -182,6 +184,7 @@ export async function exportElementAsVideo({
       fps,
       accent,
       ink,
+      style,
       encoderConfig: mp4Config,
       onProgress,
     });
@@ -249,6 +252,7 @@ export async function exportElementAsVideo({
         drawProgress,
         accent,
         ink,
+        style,
       });
       onProgress?.('recording', Math.min(0.99, elapsed / totalDuration));
       if (elapsed < totalDuration) {
@@ -281,6 +285,7 @@ interface DrawExportFrameOptions {
   drawProgress: number;
   accent: string;
   ink: string;
+  style: MotionSignatureStyle;
 }
 
 function drawExportFrame({
@@ -293,6 +298,7 @@ function drawExportFrame({
   drawProgress,
   accent,
   ink,
+  style,
 }: DrawExportFrameOptions) {
   ctx.clearRect(0, 0, targetWidth, targetHeight);
   if (backgroundVideo) {
@@ -305,6 +311,7 @@ function drawExportFrame({
     targetHeight,
     accent,
     ink,
+    style,
   });
   if (backgroundVideo) {
     ctx.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
@@ -520,6 +527,7 @@ interface Mp4EncodeOptions {
   fps: number;
   accent: string;
   ink: string;
+  style: MotionSignatureStyle;
   encoderConfig: VideoEncoderConfig;
   onProgress?: VideoExportOptions['onProgress'];
 }
@@ -537,6 +545,7 @@ async function encodeMp4WithWebCodecs({
   fps,
   accent,
   ink,
+  style,
   encoderConfig,
   onProgress,
 }: Mp4EncodeOptions) {
@@ -595,6 +604,7 @@ async function encodeMp4WithWebCodecs({
       drawProgress,
       accent,
       ink,
+      style,
     });
 
     const frame = new VideoFrame(recordCanvas, {
@@ -762,13 +772,14 @@ interface DrawOptions {
   targetHeight: number;
   accent: string;
   ink: string;
+  style: MotionSignatureStyle;
 }
 
 function drawSignatureProgressive(
   ctx: CanvasRenderingContext2D,
   points: MotionPoint[],
   progress: number,
-  { targetWidth, targetHeight, accent, ink }: DrawOptions,
+  { targetWidth, targetHeight, accent, ink, style }: DrawOptions,
 ) {
   if (!points.length) return;
   const scale = Math.min(targetWidth / SIGNATURE_VB_W, targetHeight / SIGNATURE_VB_H);
@@ -789,6 +800,12 @@ function drawSignatureProgressive(
 
   const path = partialSmoothPath(points, progress);
   if (!path) {
+    ctx.restore();
+    return;
+  }
+
+  if (style === 'data') {
+    drawDataSignature(ctx, points, visiblePoints, path, progress, accent, ink);
     ctx.restore();
     return;
   }
@@ -876,6 +893,150 @@ function sliceProgressivePoints(points: MotionPoint[], progress: number): Motion
     break;
   }
   return result;
+}
+
+function drawDataSignature(
+  ctx: CanvasRenderingContext2D,
+  points: MotionPoint[],
+  visiblePoints: MotionPoint[],
+  visiblePath: string,
+  progress: number,
+  accent: string,
+  ink: string,
+) {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  drawDataCorners(ctx, ink);
+
+  const fullPath = smoothPath(points);
+  ctx.strokeStyle = ink;
+  ctx.globalAlpha = 0.18;
+  ctx.lineWidth = 4.4;
+  strokeSvgPath(ctx, fullPath);
+
+  ctx.globalAlpha = 0.34;
+  ctx.lineWidth = 1.1;
+  ctx.setLineDash([1.4, 4.4]);
+  strokeSvgPath(ctx, fullPath);
+  ctx.setLineDash([]);
+
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = 2.4;
+  strokeSvgPath(ctx, visiblePath);
+
+  ctx.strokeStyle = accent;
+  ctx.globalAlpha = 0.72;
+  ctx.lineWidth = 0.75;
+  ctx.translate(2.2, -1);
+  strokeSvgPath(ctx, visiblePath);
+  ctx.translate(-2.2, 1);
+
+  drawDataTicks(ctx, points, progress, accent, ink);
+
+  const head = visiblePoints[0];
+  const tail = visiblePoints[visiblePoints.length - 1];
+  drawStartMark(ctx, head, ink);
+  const movingPoint = motionPointAtProgress(points, progress) || tail;
+  if (progress > 0.1) drawDataCrux(ctx, movingPoint, accent, ink);
+  if (progress >= 1) {
+    drawEndMark(ctx, tail, accent);
+  } else {
+    drawHead(ctx, tail, accent);
+  }
+
+  ctx.restore();
+}
+
+function drawDataCorners(ctx: CanvasRenderingContext2D, ink: string) {
+  ctx.save();
+  ctx.strokeStyle = ink;
+  ctx.globalAlpha = 0.28;
+  ctx.lineWidth = 0.8;
+  const size = 11;
+  const inset = 6;
+  const corners = [
+    [inset, inset, 1, 1],
+    [SIGNATURE_VB_W - inset, inset, -1, 1],
+    [inset, SIGNATURE_VB_H - inset, 1, -1],
+    [SIGNATURE_VB_W - inset, SIGNATURE_VB_H - inset, -1, -1],
+  ];
+  corners.forEach(([x, y, sx, sy]) => {
+    ctx.beginPath();
+    ctx.moveTo(x, y + sy * size);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + sx * size, y);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function drawDataTicks(
+  ctx: CanvasRenderingContext2D,
+  points: MotionPoint[],
+  progress: number,
+  accent: string,
+  ink: string,
+) {
+  ctx.save();
+  points.forEach((point, index) => {
+    if (index === 0 || index >= points.length - 1 || (point.t ?? 0) > progress) return;
+    const prev = points[index - 1];
+    const next = points[index + 1];
+    const dx = next.x - prev.x;
+    const dy = next.y - prev.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const nx = -dy / length;
+    const ny = dx / length;
+    const tick = point.dyno ? 12 : index % 3 === 0 ? 4 : 2.4;
+    ctx.strokeStyle = point.dyno ? accent : ink;
+    ctx.globalAlpha = point.dyno ? 0.95 : 0.5;
+    ctx.lineWidth = point.dyno ? 1.2 : 0.55;
+    ctx.beginPath();
+    ctx.moveTo(point.x - nx * tick, point.y - ny * tick);
+    ctx.lineTo(point.x + nx * tick, point.y + ny * tick);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function drawDataCrux(ctx: CanvasRenderingContext2D, point: MotionPoint, accent: string, ink: string) {
+  const labelX = clamp(point.x + 16, 10, SIGNATURE_VB_W - 46);
+  const labelY = clamp(point.y - 18, 12, SIGNATURE_VB_H - 10);
+  ctx.save();
+  ctx.strokeStyle = accent;
+  ctx.fillStyle = accent;
+  ctx.globalAlpha = 0.16;
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, 26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.9;
+  ctx.lineWidth = 0.9;
+  const bracket = 12;
+  [
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1],
+  ].forEach(([sx, sy]) => {
+    ctx.beginPath();
+    ctx.moveTo(point.x + sx * bracket, point.y + sy * (bracket - 5));
+    ctx.lineTo(point.x + sx * bracket, point.y + sy * bracket);
+    ctx.lineTo(point.x + sx * (bracket - 5), point.y + sy * bracket);
+    ctx.stroke();
+  });
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(point.x + 9, point.y - 9);
+  ctx.lineTo(labelX - 4, labelY - 4);
+  ctx.stroke();
+  ctx.fillStyle = ink;
+  ctx.font = '700 6px JetBrains Mono, monospace';
+  ctx.fillText('CRUX', labelX, labelY);
+  ctx.restore();
 }
 
 function strokeSvgPath(ctx: CanvasRenderingContext2D, path: string) {
