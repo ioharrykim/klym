@@ -108,7 +108,7 @@ export function PhoneShell({ children }: PropsWithChildren) {
 
 function StatusBar() {
   return (
-    <div className="status-bar">
+    <div className="status-bar" aria-hidden="true">
       <span>9:41</span>
       <span className="status-icons">
         <span className="signal-bars">

@@ -76,7 +76,7 @@ export function GradeInput({ mode, grade, color, onChange, compact }: GradeInput
         <input
           value={grade}
           onChange={(event) => onChange({ mode: 'scale', grade: event.target.value.toUpperCase(), color })}
-          placeholder="V6"
+          placeholder={t('placeholder.grade')}
           maxLength={6}
         />
       ) : (
@@ -105,6 +105,7 @@ export function GradeInput({ mode, grade, color, onChange, compact }: GradeInput
                 type="color"
                 value={color || '#FF5A1F'}
                 onChange={(event) => setColor(event.target.value.toUpperCase())}
+                aria-label={t('grade.pickCustom')}
                 tabIndex={-1}
               />
             </button>

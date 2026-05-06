@@ -4,7 +4,7 @@ import type { MotionSignatureData, MotionSignatureStyle } from '../types/klym';
 
 export function useMotionSignature() {
   const [signatures, setSignatures] = useState<MotionSignatureData[]>(() =>
-    compactSignatures(stripPrototypeSignatures(readJson<MotionSignatureData[]>(storageKeys.signatures, []))),
+    compactSignatures(stripPrototypeSignatures(readJson(storageKeys.signatures, [], isMotionSignatureArray))),
   );
 
   useEffect(() => writeJson(storageKeys.signatures, signatures), [signatures]);
@@ -63,8 +63,7 @@ const prototypeProjectIds = new Set([
 ]);
 
 function stripPrototypeSignatures(signatures: MotionSignatureData[]) {
-  if (signatures.some((signature) => signature.projectId && prototypeProjectIds.has(signature.projectId))) return [];
-  return signatures;
+  return signatures.filter((signature) => !signature.projectId || !prototypeProjectIds.has(signature.projectId));
 }
 
 function compactSignatures(signatures: MotionSignatureData[]) {
@@ -72,6 +71,36 @@ function compactSignatures(signatures: MotionSignatureData[]) {
 }
 
 function compactSignature(signature: MotionSignatureData): MotionSignatureData {
-  const { videoDataUrl: _videoDataUrl, sourceVideoUrl: _sourceVideoUrl, ...compact } = signature;
+  const {
+    videoDataUrl: _videoDataUrl,
+    sourceVideoUrl: _sourceVideoUrl,
+    backgroundFrameDataUrls: _backgroundFrameDataUrls,
+    ...compact
+  } = signature;
   return compact;
+}
+
+function isMotionSignatureArray(value: unknown): value is MotionSignatureData[] {
+  return Array.isArray(value) && value.every(isMotionSignature);
+}
+
+function isMotionSignature(value: unknown): value is MotionSignatureData {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.createdAt === 'string' &&
+    typeof value.videoName === 'string' &&
+    typeof value.videoDuration === 'number' &&
+    typeof value.frameCount === 'number' &&
+    Array.isArray(value.points) &&
+    typeof value.svgPath === 'string' &&
+    typeof value.style === 'string' &&
+    typeof value.sourceType === 'string' &&
+    typeof value.confidenceScore === 'number' &&
+    Array.isArray(value.processingNotes)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

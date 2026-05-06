@@ -17,17 +17,17 @@ export function SessionsScreen({ attempts, projects }: { attempts: Attempt[]; pr
       ) : (
         <div className="activity-list section-pad">
           {attempts.map((attempt) => {
-          const project = projects.find((item) => item.id === attempt.projectId);
-          return (
-            <div key={attempt.id} className="activity-row">
-              <span>{attempt.date.slice(5)}</span>
-              <div>
-                <b>{attemptResult(attempt.result)}</b>
-                <strong>{project?.displayName || t('common.project')}</strong>
-                <p>{attempt.attemptCount} {t('common.tries')} · {attempt.notes}</p>
+            const project = projects.find((item) => item.id === attempt.projectId);
+            return (
+              <div key={attempt.id} className="activity-row">
+                <span>{attempt.date.slice(5)}</span>
+                <div>
+                  <b>{attemptResult(attempt.result)}</b>
+                  <strong>{project?.displayName || t('common.project')}</strong>
+                  <p>{attempt.attemptCount} {t('common.tries')} · {attempt.notes || t('projectDetail.noAttemptNotes')}</p>
+                </div>
               </div>
-            </div>
-          );
+            );
           })}
         </div>
       )}

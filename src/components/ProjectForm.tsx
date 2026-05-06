@@ -28,9 +28,9 @@ export function ProjectForm({
 }) {
   const { t, status: statusLabel } = useI18n();
   const [draft, setDraft] = useState<ProjectDraft>(() => ({
-    gymName: project?.gymName || 'THE CLIMB · SEONGSU',
+    gymName: project?.gymName || '',
     environment: project?.environment || 'indoor',
-    grade: project?.grade || 'V6',
+    grade: project?.grade || '',
     gradeMode: project?.gradeMode || 'scale',
     gradeColor: project?.gradeColor,
     wallName: project?.wallName || '',
@@ -68,7 +68,7 @@ export function ProjectForm({
           <span>{project ? t('projectForm.editLine') : t('projectForm.newLine')}</span>
           <h2>{project ? project.displayName : t('projectForm.createProject')}</h2>
         </div>
-        <button type="button" onClick={onCancel}>
+        <button type="button" onClick={onCancel} aria-label={t('common.close')}>
           {t('common.close')}
         </button>
       </div>
@@ -76,15 +76,15 @@ export function ProjectForm({
       <div className="field-grid">
         <label>
           <span>{t('projectForm.projectName')}</span>
-          <input value={draft.displayName} onChange={(event) => update('displayName', event.target.value)} placeholder="CONCRETE TRAVERSE" />
+          <input value={draft.displayName} onChange={(event) => update('displayName', event.target.value)} placeholder={t('placeholder.projectName')} />
         </label>
         <label>
           <span>{t('projectForm.localName')}</span>
-          <input value={draft.localName} onChange={(event) => update('localName', event.target.value)} placeholder="콘크리트 트래버스" />
+          <input value={draft.localName} onChange={(event) => update('localName', event.target.value)} placeholder={t('placeholder.localName')} />
         </label>
         <label>
           <span>{t('projectForm.gym')}</span>
-          <input value={draft.gymName} onChange={(event) => update('gymName', event.target.value)} placeholder="THE CLIMB · SEONGSU" />
+          <input value={draft.gymName} onChange={(event) => update('gymName', event.target.value)} placeholder={t('placeholder.gym')} />
         </label>
         <label>
           <span>{t('projectForm.environment')}</span>
@@ -95,7 +95,7 @@ export function ProjectForm({
         </label>
         <label>
           <span>{t('projectForm.wall')}</span>
-          <input value={draft.wallName} onChange={(event) => update('wallName', event.target.value)} placeholder="WALL 03" />
+          <input value={draft.wallName} onChange={(event) => update('wallName', event.target.value)} placeholder={t('placeholder.wall')} />
         </label>
         <label className="grade-input-label">
           <span>{t('common.grade')}</span>

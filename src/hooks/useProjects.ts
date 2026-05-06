@@ -3,8 +3,8 @@ import { readJson, storageKeys, uid, writeJson } from '../lib/storage';
 import type { Attempt, AttemptDraft, Project, ProjectDraft, ProjectStatus } from '../types/klym';
 
 export function useProjects() {
-  const [projects, setProjects] = useState<Project[]>(() => stripPrototypeProjects(readJson<Project[]>(storageKeys.projects, [])));
-  const [attempts, setAttempts] = useState<Attempt[]>(() => stripPrototypeAttempts(readJson<Attempt[]>(storageKeys.attempts, [])));
+  const [projects, setProjects] = useState<Project[]>(() => stripPrototypeProjects(readJson(storageKeys.projects, [], isProjectArray)));
+  const [attempts, setAttempts] = useState<Attempt[]>(() => stripPrototypeAttempts(readJson(storageKeys.attempts, [], isAttemptArray)));
 
   useEffect(() => writeJson(storageKeys.projects, projects), [projects]);
   useEffect(() => writeJson(storageKeys.attempts, attempts), [attempts]);
@@ -133,11 +133,52 @@ const prototypeProjectIds = new Set([
 ]);
 
 function stripPrototypeProjects(projects: Project[]) {
-  if (projects.some((project) => prototypeProjectIds.has(project.id))) return [];
-  return projects;
+  return projects.filter((project) => !prototypeProjectIds.has(project.id));
 }
 
 function stripPrototypeAttempts(attempts: Attempt[]) {
-  if (attempts.some((attempt) => prototypeProjectIds.has(attempt.projectId))) return [];
-  return attempts;
+  return attempts.filter((attempt) => !prototypeProjectIds.has(attempt.projectId));
+}
+
+function isProjectArray(value: unknown): value is Project[] {
+  return Array.isArray(value) && value.every(isProject);
+}
+
+function isAttemptArray(value: unknown): value is Attempt[] {
+  return Array.isArray(value) && value.every(isAttempt);
+}
+
+function isProject(value: unknown): value is Project {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.gymName === 'string' &&
+    typeof value.grade === 'string' &&
+    typeof value.wallName === 'string' &&
+    typeof value.displayName === 'string' &&
+    typeof value.notes === 'string' &&
+    typeof value.betaNotes === 'string' &&
+    typeof value.nextAttemptStrategy === 'string' &&
+    typeof value.status === 'string' &&
+    typeof value.attemptsCount === 'number' &&
+    typeof value.createdAt === 'string' &&
+    typeof value.updatedAt === 'string' &&
+    typeof value.seed === 'number'
+  );
+}
+
+function isAttempt(value: unknown): value is Attempt {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.projectId === 'string' &&
+    typeof value.date === 'string' &&
+    typeof value.attemptCount === 'number' &&
+    typeof value.result === 'string' &&
+    typeof value.notes === 'string'
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

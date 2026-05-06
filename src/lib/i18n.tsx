@@ -69,6 +69,11 @@ const translations = {
     'common.buildCard': 'BUILD CARD',
     'common.sendVideo': 'SEND VIDEO',
     'common.frames': '{count} FRAMES',
+    'placeholder.projectName': 'CONCRETE TRAVERSE',
+    'placeholder.localName': '콘크리트 트래버스',
+    'placeholder.gym': 'GYM NAME',
+    'placeholder.wall': 'WALL 03',
+    'placeholder.grade': 'V6',
     'dashboard.firstRunKicker': 'KLYM // VIDEO → SEND CARD',
     'dashboard.firstRunTitle': 'TURN YOUR SEND INTO A CARD.',
     'dashboard.firstRunBody': 'Drop a clip, KLYM extracts the line as a Motion Signature, and you publish a premium card. No login, no upload — everything runs on your device.',
@@ -140,6 +145,7 @@ const translations = {
     'projectDetail.noNotes': 'No notes yet.',
     'projectDetail.attemptLog': 'ATTEMPT LOG',
     'projectDetail.noAttempts': 'No attempts logged yet.',
+    'projectDetail.noAttemptNotes': 'No notes on this attempt.',
     'projectDetail.try': 'TRY',
     'projectDetail.markSentUpload': 'UPLOAD CLIP',
     'projectDetail.uploadSend': 'UPLOAD SEND',
@@ -170,6 +176,8 @@ const translations = {
     'motion.wallOptional': 'WALL (OPTIONAL)',
     'motion.topHold': 'TOP HOLD',
     'motion.fallAt': 'FALL · {progress}%',
+    'motion.labelTop': 'TOP',
+    'motion.labelMotion': 'MOTION',
     'motion.saveBuildCard': 'SAVE · BUILD CARD',
     'motion.autoFailed': 'Automatic detection failed. Use manual correction.',
     'motion.videoFailed': 'Video processing failed.',
@@ -197,8 +205,10 @@ const translations = {
     'send.recording': 'RECORDING',
     'send.encoding': 'ENCODING',
     'send.shared': 'SHARED',
+    'send.shareCancelled': 'SHARE CANCELLED',
     'send.saved': 'SAVED {type}',
     'send.exportFailed': 'EXPORT FAILED',
+    'send.colorGradeAria': 'Color grade: {color}',
     'sessions.title': 'SESSIONS',
     'sessions.subtitle': '{count} LOGGED EVENTS',
     'sessions.recentAttempts': 'RECENT ATTEMPTS',
@@ -217,6 +227,7 @@ const translations = {
     'onboarding.title': 'KEEP LINES, YOUR MOVE.',
     'onboarding.body': 'Track projects, turn send video into a Motion Signature, and export a premium Send Card.',
     'onboarding.ready': 'MOTION SIGNATURE READY',
+    'onboarding.sampleProject': 'CONCRETE TRAVERSE',
     'onboarding.start': 'GET STARTED',
   },
   ko: {
@@ -267,6 +278,11 @@ const translations = {
     'common.buildCard': '카드 만들기',
     'common.sendVideo': '센드 영상',
     'common.frames': '{count} 프레임',
+    'placeholder.projectName': '예: 콘크리트 트래버스',
+    'placeholder.localName': '콘크리트 트래버스',
+    'placeholder.gym': '클라이밍장 이름',
+    'placeholder.wall': '예: 3번 벽',
+    'placeholder.grade': '예: V6',
     'dashboard.firstRunKicker': 'KLYM // CLIP TO CARD',
     'dashboard.firstRunTitle': '완등의 움직임을 카드로 남기세요.',
     'dashboard.firstRunBody': '내 클라이밍 영상을 가져오면 KLYM이 움직임을 읽고 라인을 그립니다. 업로드 없이, 내 기기 안에서 바로.',
@@ -338,6 +354,7 @@ const translations = {
     'projectDetail.noNotes': '아직 메모가 없어요.',
     'projectDetail.attemptLog': '시도 기록',
     'projectDetail.noAttempts': '아직 시도 기록이 없어요.',
+    'projectDetail.noAttemptNotes': '이 시도에는 메모가 없어요.',
     'projectDetail.try': '시도',
     'projectDetail.markSentUpload': '영상 업로드',
     'projectDetail.uploadSend': '완등 영상 업로드',
@@ -368,6 +385,8 @@ const translations = {
     'motion.wallOptional': '벽 (선택)',
     'motion.topHold': '탑 홀드',
     'motion.fallAt': '추락 · {progress}%',
+    'motion.labelTop': '탑',
+    'motion.labelMotion': '모션',
     'motion.saveBuildCard': '저장 · 카드 만들기',
     'motion.autoFailed': '자동 분석이 흔들렸습니다. 직접 포인트를 찍어 라인을 완성하세요.',
     'motion.videoFailed': '영상 처리에 실패했습니다.',
@@ -395,8 +414,10 @@ const translations = {
     'send.recording': '녹화 중',
     'send.encoding': '인코딩 중',
     'send.shared': '공유됨',
+    'send.shareCancelled': '공유 취소됨',
     'send.saved': '{type} 저장됨',
     'send.exportFailed': '내보내기 실패',
+    'send.colorGradeAria': '컬러 난이도: {color}',
     'sessions.title': '세션',
     'sessions.subtitle': '{count}개 기록',
     'sessions.recentAttempts': '최근 시도',
@@ -415,6 +436,7 @@ const translations = {
     'onboarding.title': '선을 남기고, 무브를 기록.',
     'onboarding.body': '프로젝트를 기록하고 완등 영상을 모션 시그니처로 바꾼 뒤 프리미엄 센드 카드로 내보내세요.',
     'onboarding.ready': '모션 시그니처 준비 완료',
+    'onboarding.sampleProject': '콘크리트 트래버스',
     'onboarding.start': '시작하기',
   },
 } as const satisfies Record<Language, Record<string, string>>;
@@ -636,6 +658,25 @@ const processStepLabels: Record<Language, string[]> = {
   ko: ['영상 선택됨', '프레임 추출', '움직임 감지', '시그니처 생성'],
 };
 
+const motionEventLabels: Record<Language, Record<string, string>> = {
+  en: {
+    start: 'START',
+    dyno: 'DYNO / POWER MOVE',
+    crux: 'CRUX',
+    match: 'MATCH',
+    topout: 'TOP OUT',
+    fall: 'FALL',
+  },
+  ko: {
+    start: '시작',
+    dyno: '다이노 / 파워 무브',
+    crux: '핵심 구간',
+    match: '합손',
+    topout: '탑아웃',
+    fall: '추락',
+  },
+};
+
 interface I18nValue {
   language: Language;
   locale: string;
@@ -662,7 +703,9 @@ interface I18nValue {
 const I18nContext = createContext<I18nValue | undefined>(undefined);
 
 export function I18nProvider({ children }: PropsWithChildren) {
-  const [language, setLanguageState] = useState<Language>(() => readJson<Language | null>(storageKeys.language, null) || detectLanguage());
+  const [language, setLanguageState] = useState<Language>(() =>
+    readJson<Language | null>(storageKeys.language, null, isStoredLanguage) || detectLanguage(),
+  );
 
   useEffect(() => {
     writeJson(storageKeys.language, language);
@@ -700,16 +743,7 @@ export function I18nProvider({ children }: PropsWithChildren) {
       processingState: (state) => processingLabels[language][state],
       processingTitle: (state) => processingTitles[language][state],
       processSteps: processStepLabels[language],
-      motionEvent: (type, fallback) => {
-        if (language === 'en') return fallback;
-        if (type === 'start') return '시작';
-        if (type === 'dyno') return '다이노 / 파워 무브';
-        if (type === 'crux') return '핵심 구간';
-        if (type === 'match') return '합손';
-        if (type === 'topout') return '탑아웃';
-        if (type === 'fall') return '추락';
-        return fallback;
-      },
+      motionEvent: (type, fallback) => motionEventLabels[language][type] || fallback,
     };
   }, [language]);
 
@@ -738,4 +772,8 @@ function detectLanguage(): Language {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   if (timeZone === 'Asia/Seoul') return 'ko';
   return 'en';
+}
+
+function isStoredLanguage(value: unknown): value is Language | null {
+  return value === null || value === 'ko' || value === 'en';
 }

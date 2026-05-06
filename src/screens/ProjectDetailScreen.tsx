@@ -87,7 +87,7 @@ export function ProjectDetailScreen({
                   <b>
                     {attemptResult(attempt.result)} · {attempt.attemptCount} {t('common.tries')}
                   </b>
-                  <p>{attempt.notes}</p>
+                  <p>{attempt.notes || t('projectDetail.noAttemptNotes')}</p>
                 </div>
               </div>
             ))

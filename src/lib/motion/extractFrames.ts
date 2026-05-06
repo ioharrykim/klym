@@ -6,6 +6,7 @@ interface ExtractFrameOptions {
   quality?: number;
   trimStartRatio?: number;
   trimEndRatio?: number;
+  signal?: AbortSignal;
   onProgress?: (progress: number) => void;
 }
 
@@ -25,64 +26,74 @@ export async function extractFramesFromVideo(
   video.src = videoUrl;
 
   try {
-    await waitForEvent(video, 'loadedmetadata');
-  } catch (error) {
-    URL.revokeObjectURL(videoUrl);
-    throw new Error(
-      `Video metadata could not be loaded. Some HEVC .mov files are not supported by this browser. Try an H.264 .mov/mp4 export. ${error instanceof Error ? error.message : ''}`,
-    );
-  }
-
-  const duration = Number.isFinite(video.duration) ? video.duration : 0;
-  const naturalWidth = video.videoWidth || maxWidth;
-  const naturalHeight = video.videoHeight || Math.round(maxWidth * 1.4);
-  const scale = Math.min(1, maxWidth / naturalWidth);
-  const width = Math.max(1, Math.round(naturalWidth * scale));
-  const height = Math.max(1, Math.round(naturalHeight * scale));
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context) {
-    URL.revokeObjectURL(videoUrl);
-    throw new Error('Canvas is not available in this browser.');
-  }
-  canvas.width = width;
-  canvas.height = height;
-
-  const safeDuration = Math.max(duration, 0.5);
-  const trimStartRatio = options.trimStartRatio ?? 0.08;
-  const trimEndRatio = options.trimEndRatio ?? 0.92;
-  const start = Math.max(0, Math.min(safeDuration * trimStartRatio, safeDuration - 0.2));
-  const end = Math.max(start + 0.1, Math.min(safeDuration, safeDuration * trimEndRatio));
-  const frames: MotionFrame[] = [];
-
-  for (let index = 0; index < count; index += 1) {
-    const t = count === 1 ? start : start + ((end - start) * index) / (count - 1);
-    video.currentTime = Math.min(t, Math.max(0, safeDuration - 0.05));
+    throwIfAborted(options.signal);
     try {
-      await waitForEvent(video, 'seeked');
+      await waitForEvent(video, 'loadedmetadata', options.signal);
     } catch (error) {
-      URL.revokeObjectURL(videoUrl);
+      if (isAbortError(error)) throw error;
       throw new Error(
-        `Video frame ${index + 1} could not be decoded. HEVC/large .mov decoding may be unsupported in this browser. ${error instanceof Error ? error.message : ''}`,
+        `Video metadata could not be loaded. Some HEVC .mov files are not supported by this browser. Try an H.264 .mov/mp4 export. ${error instanceof Error ? error.message : ''}`,
       );
     }
-    context.drawImage(video, 0, 0, width, height);
-    frames.push({
-      id: `frame_${index}`,
-      index,
-      time: video.currentTime,
-      width,
-      height,
-      dataUrl: canvas.toDataURL('image/jpeg', quality),
-    });
-    options.onProgress?.((index + 1) / count);
-  }
 
-  return { frames, duration, videoUrl };
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    const naturalWidth = video.videoWidth || maxWidth;
+    const naturalHeight = video.videoHeight || Math.round(maxWidth * 1.4);
+    const scale = Math.min(1, maxWidth / naturalWidth);
+    const width = Math.max(1, Math.round(naturalWidth * scale));
+    const height = Math.max(1, Math.round(naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) {
+      throw new Error('Canvas is not available in this browser.');
+    }
+    canvas.width = width;
+    canvas.height = height;
+
+    const safeDuration = Math.max(duration, 0.5);
+    const trimStartRatio = options.trimStartRatio ?? 0.08;
+    const trimEndRatio = options.trimEndRatio ?? 0.92;
+    const start = Math.max(0, Math.min(safeDuration * trimStartRatio, safeDuration - 0.2));
+    const end = Math.max(start + 0.1, Math.min(safeDuration, safeDuration * trimEndRatio));
+    const frames: MotionFrame[] = [];
+
+    for (let index = 0; index < count; index += 1) {
+      throwIfAborted(options.signal);
+      const t = count === 1 ? start : start + ((end - start) * index) / (count - 1);
+      video.currentTime = Math.min(t, Math.max(0, safeDuration - 0.05));
+      try {
+        await waitForEvent(video, 'seeked', options.signal);
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        throw new Error(
+          `Video frame ${index + 1} could not be decoded. HEVC/large .mov decoding may be unsupported in this browser. ${error instanceof Error ? error.message : ''}`,
+        );
+      }
+      context.drawImage(video, 0, 0, width, height);
+      frames.push({
+        id: `frame_${index}`,
+        index,
+        time: video.currentTime,
+        width,
+        height,
+        dataUrl: canvas.toDataURL('image/jpeg', quality),
+      });
+      options.onProgress?.((index + 1) / count);
+    }
+
+    return { frames, duration, videoUrl };
+  } catch (error) {
+    URL.revokeObjectURL(videoUrl);
+    throw error;
+  }
 }
 
-function waitForEvent(target: HTMLMediaElement, eventName: string) {
+function waitForEvent(target: HTMLMediaElement, eventName: string, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Video frame extraction was cancelled.', 'AbortError'));
+      return;
+    }
     const onEvent = () => {
       cleanup();
       resolve();
@@ -94,8 +105,23 @@ function waitForEvent(target: HTMLMediaElement, eventName: string) {
     const cleanup = () => {
       target.removeEventListener(eventName, onEvent);
       target.removeEventListener('error', onError);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new DOMException('Video frame extraction was cancelled.', 'AbortError'));
     };
     target.addEventListener(eventName, onEvent, { once: true });
     target.addEventListener('error', onError, { once: true });
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  throw new DOMException('Video frame extraction was cancelled.', 'AbortError');
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
 }

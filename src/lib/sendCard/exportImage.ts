@@ -47,7 +47,7 @@ export async function exportElementAsPng(
       ),
     );
     triggerDownload(blob, fileName);
-    return URL.createObjectURL(blob);
+    return;
   }
   const dataUrl = await toPng(element, {
     cacheBust: true,
@@ -58,7 +58,6 @@ export async function exportElementAsPng(
   link.download = fileName;
   link.href = dataUrl;
   link.click();
-  return dataUrl;
 }
 
 interface VideoExportOptions {
@@ -82,7 +81,7 @@ interface VideoExportResult {
   blob: Blob;
   fileName: string;
   mimeType: string;
-  delivery: 'shared' | 'downloaded';
+  delivery: 'shared' | 'downloaded' | 'cancelled';
 }
 
 export async function exportElementAsVideo({
@@ -201,6 +200,7 @@ export async function exportElementAsVideo({
   const { recorder, mimeType } = createVideoRecorder(stream);
   const outputFileName = withVideoExtension(fileName, mimeType);
   const chunks: BlobPart[] = [];
+  let recorderStopped = false;
   recorder.ondataavailable = (event) => {
     if (event.data && event.data.size > 0) chunks.push(event.data);
   };
@@ -221,58 +221,62 @@ export async function exportElementAsVideo({
     recorder.onerror = (event) => reject((event as ErrorEvent).error || new Error('MediaRecorder error.'));
   });
 
-  if (backgroundVideo) {
-    backgroundVideo.currentTime = 0;
-    const exportRate = backgroundVideo.duration * 1000 > totalDuration ? backgroundVideo.duration / (totalDuration / 1000) : 1;
-    try {
-      backgroundVideo.playbackRate = Number.isFinite(exportRate) && exportRate > 0 && exportRate <= 16 ? exportRate : 1;
-    } catch {
-      backgroundVideo.playbackRate = 1;
+  try {
+    if (backgroundVideo) {
+      await startBackgroundPlayback(backgroundVideo, totalDuration);
     }
-    await backgroundVideo.play().catch(() => undefined);
-  }
-  recorder.start(200);
-  onProgress?.('recording', 0);
+    recorder.start(200);
+    onProgress?.('recording', 0);
 
-  const start = performance.now();
+    const start = performance.now();
 
-  await new Promise<void>((resolve) => {
-    function frame() {
-      const elapsed = performance.now() - start;
-      const drawProgress = backgroundVideo
-        ? videoProgress(backgroundVideo, elapsed, totalDuration)
-        : Math.min(1, elapsed / lineDurationMs);
-      drawExportFrame({
-        ctx: ctx!,
-        backgroundCanvas,
-        backgroundVideo,
-        points,
-        targetWidth,
-        targetHeight,
-        drawProgress,
-        accent,
-        ink,
-        style,
-      });
-      onProgress?.('recording', Math.min(0.99, elapsed / totalDuration));
-      if (elapsed < totalDuration) {
-        requestAnimationFrame(frame);
-      } else {
-        resolve();
+    await new Promise<void>((resolve) => {
+      function frame() {
+        const elapsed = performance.now() - start;
+        const drawProgress = backgroundVideo
+          ? videoProgress(backgroundVideo, elapsed, totalDuration)
+          : Math.min(1, elapsed / lineDurationMs);
+        drawExportFrame({
+          ctx: ctx!,
+          backgroundCanvas,
+          backgroundVideo,
+          points,
+          targetWidth,
+          targetHeight,
+          drawProgress,
+          accent,
+          ink,
+          style,
+        });
+        onProgress?.('recording', Math.min(0.99, elapsed / totalDuration));
+        if (elapsed < totalDuration) {
+          requestAnimationFrame(frame);
+        } else {
+          resolve();
+        }
+      }
+      requestAnimationFrame(frame);
+    });
+
+    recorder.stop();
+    recorderStopped = true;
+    onProgress?.('encoding', 0.98);
+
+    const blob = await stopped;
+    const delivery = await shareOrDownload(blob, outputFileName);
+    onProgress?.('encoding', 1);
+    return { blob, fileName: outputFileName, mimeType, delivery };
+  } finally {
+    if (!recorderStopped && recorder.state !== 'inactive') {
+      try {
+        recorder.stop();
+      } catch {
+        /* recorder may already be inactive after an encoder error */
       }
     }
-    requestAnimationFrame(frame);
-  });
-
-  recorder.stop();
-  backgroundVideo?.pause();
-  stream.getTracks().forEach((track) => track.stop());
-  onProgress?.('encoding', 0.98);
-
-  const blob = await stopped;
-  const delivery = await shareOrDownload(blob, outputFileName);
-  onProgress?.('encoding', 1);
-  return { blob, fileName: outputFileName, mimeType, delivery };
+    backgroundVideo?.pause();
+    stream.getTracks().forEach((track) => track.stop());
+  }
 }
 
 interface DrawExportFrameOptions {
@@ -569,68 +573,81 @@ async function encodeMp4WithWebCodecs({
     },
   });
   encoder.configure(encoderConfig);
+  let encoderClosed = false;
 
-  if (backgroundVideo) {
-    await startBackgroundPlayback(backgroundVideo, totalDuration);
-  }
-
-  onProgress?.('recording', 0);
-  const frameCount = Math.max(2, Math.ceil((totalDuration / 1000) * fps));
-  const frameDurationUs = Math.round(1_000_000 / fps);
-  const keyFrameInterval = Math.max(1, Math.round(fps));
-  const start = performance.now();
-
-  for (let frameIndex = 0; frameIndex <= frameCount; frameIndex += 1) {
-    const targetElapsed = Math.min(totalDuration, (frameIndex / fps) * 1000);
+  try {
     if (backgroundVideo) {
-      const waitMs = start + targetElapsed - performance.now();
-      if (waitMs > 1) await delay(waitMs);
-    } else if (frameIndex % 8 === 0) {
-      await nextAnimationFrame();
+      await startBackgroundPlayback(backgroundVideo, totalDuration);
     }
 
-    const elapsed = backgroundVideo ? Math.min(totalDuration, performance.now() - start) : targetElapsed;
-    const drawProgress = backgroundVideo
-      ? videoProgress(backgroundVideo, elapsed, totalDuration)
-      : Math.min(1, targetElapsed / lineDurationMs);
+    onProgress?.('recording', 0);
+    const frameCount = Math.max(2, Math.ceil((totalDuration / 1000) * fps));
+    const frameDurationUs = Math.round(1_000_000 / fps);
+    const keyFrameInterval = Math.max(1, Math.round(fps));
+    const start = performance.now();
 
-    drawExportFrame({
-      ctx,
-      backgroundCanvas,
-      backgroundVideo,
-      points,
-      targetWidth,
-      targetHeight,
-      drawProgress,
-      accent,
-      ink,
-      style,
-    });
+    for (let frameIndex = 0; frameIndex <= frameCount; frameIndex += 1) {
+      const targetElapsed = Math.min(totalDuration, (frameIndex / fps) * 1000);
+      if (backgroundVideo) {
+        const waitMs = start + targetElapsed - performance.now();
+        if (waitMs > 1) await delay(waitMs);
+      } else if (frameIndex % 8 === 0) {
+        await nextAnimationFrame();
+      }
 
-    const frame = new VideoFrame(recordCanvas, {
-      timestamp: frameIndex * frameDurationUs,
-      duration: frameDurationUs,
-    });
-    encoder.encode(frame, { keyFrame: frameIndex % keyFrameInterval === 0 });
-    frame.close();
+      const elapsed = backgroundVideo ? Math.min(totalDuration, performance.now() - start) : targetElapsed;
+      const drawProgress = backgroundVideo
+        ? videoProgress(backgroundVideo, elapsed, totalDuration)
+        : Math.min(1, targetElapsed / lineDurationMs);
 
+      drawExportFrame({
+        ctx,
+        backgroundCanvas,
+        backgroundVideo,
+        points,
+        targetWidth,
+        targetHeight,
+        drawProgress,
+        accent,
+        ink,
+        style,
+      });
+
+      const frame = new VideoFrame(recordCanvas, {
+        timestamp: frameIndex * frameDurationUs,
+        duration: frameDurationUs,
+      });
+      encoder.encode(frame, { keyFrame: frameIndex % keyFrameInterval === 0 });
+      frame.close();
+
+      if (encoderError) throw encoderError;
+      if (encoder.encodeQueueSize > 8) await nextAnimationFrame();
+      onProgress?.('recording', Math.min(0.99, targetElapsed / totalDuration));
+    }
+
+    onProgress?.('encoding', 0.98);
+    await encoder.flush();
     if (encoderError) throw encoderError;
-    if (encoder.encodeQueueSize > 8) await nextAnimationFrame();
-    onProgress?.('recording', Math.min(0.99, targetElapsed / totalDuration));
+    encoder.close();
+    encoderClosed = true;
+    backgroundVideo?.pause();
+    muxer.finalize();
+
+    if (!target.buffer.byteLength) {
+      throw new Error('MP4 encoder returned an empty file. Try exporting again after the preview video has loaded.');
+    }
+
+    return new Blob([target.buffer], { type: 'video/mp4' });
+  } finally {
+    backgroundVideo?.pause();
+    if (!encoderClosed) {
+      try {
+        encoder.close();
+      } catch {
+        /* encoder may already be closed by the browser */
+      }
+    }
   }
-
-  onProgress?.('encoding', 0.98);
-  await encoder.flush();
-  if (encoderError) throw encoderError;
-  encoder.close();
-  backgroundVideo?.pause();
-  muxer.finalize();
-
-  if (!target.buffer.byteLength) {
-    throw new Error('MP4 encoder returned an empty file. Try exporting again after the preview video has loaded.');
-  }
-
-  return new Blob([target.buffer], { type: 'video/mp4' });
 }
 
 async function getMp4EncoderConfig(width: number, height: number, fps: number): Promise<VideoEncoderConfig | null> {
@@ -671,7 +688,11 @@ async function startBackgroundPlayback(video: HTMLVideoElement, totalDuration: n
   } catch {
     video.playbackRate = 1;
   }
-  await video.play().catch(() => undefined);
+  try {
+    await video.play();
+  } catch (error) {
+    throw new Error(`Source video could not start playback for export. ${error instanceof Error ? error.message : ''}`);
+  }
 }
 
 async function prepareBackgroundVideo(url: string) {
@@ -1167,7 +1188,7 @@ function withVideoExtension(fileName: string, mimeType: string) {
   return fileName.replace(/\.(webm|mp4)$/i, `.${extension}`);
 }
 
-async function shareOrDownload(blob: Blob, fileName: string): Promise<'shared' | 'downloaded'> {
+async function shareOrDownload(blob: Blob, fileName: string): Promise<VideoExportResult['delivery']> {
   const file = new File([blob], fileName, { type: blob.type || 'video/mp4' });
   const nav = navigator as Navigator & {
     canShare?: (data: ShareData) => boolean;
@@ -1183,7 +1204,7 @@ async function shareOrDownload(blob: Blob, fileName: string): Promise<'shared' |
       return 'shared';
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new Error('Share cancelled.');
+        return 'cancelled';
       }
     }
   }

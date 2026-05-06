@@ -1,11 +1,14 @@
 const canUseStorage = () => typeof window !== 'undefined' && 'localStorage' in window;
 
-export function readJson<T>(key: string, fallback: T): T {
+export type StorageValidator<T> = (value: unknown) => value is T;
+
+export function readJson<T>(key: string, fallback: T, validator?: StorageValidator<T>): T {
   if (!canUseStorage()) return fallback;
   const raw = window.localStorage.getItem(key);
   if (!raw) return fallback;
   try {
-    return JSON.parse(raw) as T;
+    const parsed = JSON.parse(raw) as unknown;
+    return !validator || validator(parsed) ? (parsed as T) : fallback;
   } catch {
     return fallback;
   }

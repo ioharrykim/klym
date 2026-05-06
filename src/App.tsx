@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PhoneShell, Stage, TabBar } from './components/UI';
 import { defaultStyle } from './lib/data';
 import { useMotionSignature } from './hooks/useMotionSignature';
 import { useProjects } from './hooks/useProjects';
 import { useSendCards } from './hooks/useSendCards';
+import { releasePoseLandmarker } from './lib/motion/poseDetection';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { MotionFlowScreen } from './screens/MotionFlowScreen';
 import { ProjectDetailScreen } from './screens/ProjectDetailScreen';
@@ -23,6 +24,12 @@ export default function App() {
   const [activeProjectId, setActiveProjectId] = useState('');
   const [activeSignature, setActiveSignature] = useState<MotionSignatureData | undefined>();
   const [quickMode, setQuickMode] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      void releasePoseLandmarker();
+    };
+  }, []);
 
   const activeProject = useMemo(
     () => projectsApi.projects.find((project) => project.id === activeProjectId),

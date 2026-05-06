@@ -48,6 +48,7 @@ export function SendCardScreen({
   const [style, setStyle] = useState<MotionSignatureStyle>(signature?.style || 'data');
   const defaultReflection = language === 'ko' ? t('send.defaultReflectionKo') : t('send.defaultReflection');
   const defaultReflectionRef = useRef(defaultReflection);
+  const reflectionEditedRef = useRef(false);
   const [reflection, setReflection] = useState(defaultReflection);
   const [backgroundMode, setBackgroundMode] = useState<SendCardBackgroundMode>(preferredBackgroundMode(signature));
   const [textTone, setTextTone] = useState<SendCardTextTone>('light');
@@ -59,7 +60,7 @@ export function SendCardScreen({
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setReflection((current) => (current === defaultReflectionRef.current ? defaultReflection : current));
+    setReflection((current) => (!reflectionEditedRef.current && current === defaultReflectionRef.current ? defaultReflection : current));
     defaultReflectionRef.current = defaultReflection;
   }, [defaultReflection]);
 
@@ -124,7 +125,9 @@ export function SendCardScreen({
       setVideoStatus(
         result.delivery === 'shared'
           ? t('send.shared')
-          : t('send.saved', { type: result.fileName.split('.').pop()?.toUpperCase() || 'VIDEO' }),
+          : result.delivery === 'cancelled'
+            ? t('send.shareCancelled')
+            : t('send.saved', { type: result.fileName.split('.').pop()?.toUpperCase() || 'VIDEO' }),
       );
     } catch (error) {
       console.error(error);
@@ -190,7 +193,8 @@ export function SendCardScreen({
               <label>
                 <span>{t('common.signature')}</span>
                 <select
-                  value={signature.id}
+                  value={signature?.id || ''}
+                  disabled={availableSignatures.length === 0}
                   onChange={(event) => {
                     setSignatureId(event.target.value);
                     const next =
@@ -238,7 +242,15 @@ export function SendCardScreen({
             <div className="builder-controls">
               <label>
                 <span>{t('send.reflection')}</span>
-                <textarea value={reflection} onChange={(event) => setReflection(event.target.value)} maxLength={84} rows={2} />
+                <textarea
+                  value={reflection}
+                  onChange={(event) => {
+                    reflectionEditedRef.current = true;
+                    setReflection(event.target.value);
+                  }}
+                  maxLength={84}
+                  rows={2}
+                />
               </label>
             </div>
 

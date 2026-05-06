@@ -38,7 +38,7 @@ export function OnboardingScreen({
           <div>
             <GradeChip grade="V6" />
             <StatusPill status="projecting" />
-            <b>CONCRETE TRAVERSE</b>
+            <b>{t('onboarding.sampleProject')}</b>
           </div>
           <div>
             <Chip color={tokens.ok}>{t('common.sent')}</Chip>

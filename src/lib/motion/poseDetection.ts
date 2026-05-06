@@ -62,7 +62,9 @@ export async function detectMotionFromFrames(
   frames: MotionFrame[],
   videoDuration = inferDuration(frames),
   environment: ClimbEnvironment = 'indoor',
+  signal?: AbortSignal,
 ): Promise<DetectionResult> {
+  throwIfAborted(signal);
   if (frames.length < 3) {
     return {
       points: [],
@@ -74,10 +76,10 @@ export async function detectMotionFromFrames(
     };
   }
 
-  const poseResult = await detectPosePath(frames, videoDuration, environment);
+  const poseResult = await detectPosePath(frames, videoDuration, environment, signal);
   if (poseResult && !poseResult.failed) return poseResult;
 
-  const pixelResult = await detectPixelMotionPath(frames, videoDuration);
+  const pixelResult = await detectPixelMotionPath(frames, videoDuration, signal);
   return {
     ...pixelResult,
     failed: pixelResult.failed,
@@ -93,68 +95,74 @@ async function detectPosePath(
   frames: MotionFrame[],
   videoDuration: number,
   environment: ClimbEnvironment,
+  signal?: AbortSignal,
 ): Promise<DetectionResult | null> {
   try {
     const landmarker = await getPoseLandmarker();
-    const bitmaps = await Promise.all(frames.map((frame) => decodeFrame(frame.dataUrl)));
-    const poseSamples: PoseFrameSample[] = [];
-    let hitCount = 0;
-    let lastTimestampMs = -1;
+    const bitmaps = await decodeFrames(frames, signal);
+    try {
+      const poseSamples: PoseFrameSample[] = [];
+      let hitCount = 0;
+      let lastTimestampMs = -1;
 
-    for (let index = 0; index < bitmaps.length; index += 1) {
-      const frame = frames[index];
-      const timestampMs = Math.max(lastTimestampMs + 1, Math.round(frame.time * 1000));
-      lastTimestampMs = timestampMs;
-      const result = landmarker.detectForVideo(bitmaps[index], timestampMs);
-      const pose = result.landmarks[0];
-      const sample = pose ? poseSample(pose) : emptyPoseSample();
-      if (sample.bodyCenter) hitCount += 1;
-      poseSamples.push(sample);
+      for (let index = 0; index < bitmaps.length; index += 1) {
+        throwIfAborted(signal);
+        const frame = frames[index];
+        const timestampMs = Math.max(lastTimestampMs + 1, Math.round(frame.time * 1000));
+        lastTimestampMs = timestampMs;
+        const result = landmarker.detectForVideo(bitmaps[index], timestampMs);
+        const pose = result.landmarks[0];
+        const sample = pose ? poseSample(pose) : emptyPoseSample();
+        if (sample.bodyCenter) hitCount += 1;
+        poseSamples.push(sample);
+      }
+
+      const routeChoice = choosePoseRoute(poseSamples, frames, videoDuration, environment);
+      const completion = analyzeCompletion(poseSamples, frames, bitmaps, environment);
+
+      const interpolatedPoints = stabilizePosePoints(interpolateLowConfidencePoints(routeChoice.points));
+      const normalized = normalizeDetectedPoints(interpolatedPoints, frames[0].width, frames[0].height);
+      const poseCoverage = hitCount / frames.length;
+      const confidenceScore = Number(
+        Math.max(
+          0,
+          Math.min(1, confidenceFromPoints(normalized) * 0.45 + routeChoice.selectedCoverage * 0.35 + poseCoverage * 0.2),
+        ).toFixed(2),
+      );
+      const failed =
+        hitCount < Math.max(3, Math.ceil(frames.length * 0.42)) ||
+        routeChoice.selectedCoverage < 0.36 ||
+        confidenceScore < 0.34;
+
+      return {
+        points: normalized,
+        confidenceScore,
+        failed,
+        method: 'pose',
+        environment,
+        trackingMode: routeChoice.trackingMode,
+        problemStyle: routeChoice.problemStyle,
+        completionStatus: completion.status,
+        topHoldColor: completion.topHoldColor,
+        fallAt: completion.fallAt,
+        finishConfidence: completion.confidence,
+        notes: [
+          `MediaPipe pose detection found a climber in ${hitCount}/${frames.length} sampled frames.`,
+          `${environment === 'indoor' ? 'Indoor mode looks for matched hands on the finish hold.' : 'Outdoor mode prioritizes topout body progression.'}`,
+          `Auto style estimate: ${routeChoice.problemStyle}. Selected ${trackingLabel(routeChoice.trackingMode)} route from body-center, hands, feet, and crux-wrist candidates.`,
+          `Route scores — body ${routeChoice.scores['body-center'].toFixed(2)}, hands ${routeChoice.scores.hands.toFixed(2)}, feet ${routeChoice.scores.feet.toFixed(2)}, crux wrist ${routeChoice.scores['crux-wrist'].toFixed(2)}.`,
+          ...completion.notes,
+          'Low-confidence pose frames are interpolated from adjacent reliable route points and aligned to source-video timestamps.',
+          failed
+            ? 'Pose confidence was too low for a reliable signature; falling back to pixel motion or manual correction.'
+            : 'Automatic detection used video-mode pose tracking across hips, shoulders, elbows, wrists, hands, knees, ankles, heels, and foot index points.',
+        ],
+      };
+    } finally {
+      closeBitmaps(bitmaps);
     }
-
-    const routeChoice = choosePoseRoute(poseSamples, frames, videoDuration, environment);
-    const completion = analyzeCompletion(poseSamples, frames, bitmaps, environment);
-    closeBitmaps(bitmaps);
-
-    const interpolatedPoints = stabilizePosePoints(interpolateLowConfidencePoints(routeChoice.points));
-    const normalized = normalizeDetectedPoints(interpolatedPoints, frames[0].width, frames[0].height);
-    const poseCoverage = hitCount / frames.length;
-    const confidenceScore = Number(
-      Math.max(
-        0,
-        Math.min(1, confidenceFromPoints(normalized) * 0.45 + routeChoice.selectedCoverage * 0.35 + poseCoverage * 0.2),
-      ).toFixed(2),
-    );
-    const failed =
-      hitCount < Math.max(3, Math.ceil(frames.length * 0.42)) ||
-      routeChoice.selectedCoverage < 0.36 ||
-      confidenceScore < 0.34;
-
-    return {
-      points: normalized,
-      confidenceScore,
-      failed,
-      method: 'pose',
-      environment,
-      trackingMode: routeChoice.trackingMode,
-      problemStyle: routeChoice.problemStyle,
-      completionStatus: completion.status,
-      topHoldColor: completion.topHoldColor,
-      fallAt: completion.fallAt,
-      finishConfidence: completion.confidence,
-      notes: [
-        `MediaPipe pose detection found a climber in ${hitCount}/${frames.length} sampled frames.`,
-        `${environment === 'indoor' ? 'Indoor mode looks for matched hands on the finish hold.' : 'Outdoor mode prioritizes topout body progression.'}`,
-        `Auto style estimate: ${routeChoice.problemStyle}. Selected ${trackingLabel(routeChoice.trackingMode)} route from body-center, hands, feet, and crux-wrist candidates.`,
-        `Route scores — body ${routeChoice.scores['body-center'].toFixed(2)}, hands ${routeChoice.scores.hands.toFixed(2)}, feet ${routeChoice.scores.feet.toFixed(2)}, crux wrist ${routeChoice.scores['crux-wrist'].toFixed(2)}.`,
-        ...completion.notes,
-        'Low-confidence pose frames are interpolated from adjacent reliable route points and aligned to source-video timestamps.',
-        failed
-          ? 'Pose confidence was too low for a reliable signature; falling back to pixel motion or manual correction.'
-          : 'Automatic detection used video-mode pose tracking across hips, shoulders, elbows, wrists, hands, knees, ankles, heels, and foot index points.',
-      ],
-    };
   } catch (error) {
+    if (isAbortError(error)) throw error;
     return {
       points: [],
       confidenceScore: 0,
@@ -662,76 +670,80 @@ function stabilizePosePoints(points: MotionPoint[]) {
   });
 }
 
-async function detectPixelMotionPath(frames: MotionFrame[], videoDuration: number): Promise<DetectionResult> {
-  const bitmaps = await Promise.all(frames.map((frame) => decodeFrame(frame.dataUrl)));
-  const sampleWidth = 144;
-  const sampleHeight = Math.max(96, Math.round(sampleWidth * (frames[0].height / frames[0].width)));
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context) {
-    closeBitmaps(bitmaps);
+async function detectPixelMotionPath(frames: MotionFrame[], videoDuration: number, signal?: AbortSignal): Promise<DetectionResult> {
+  const bitmaps = await decodeFrames(frames, signal);
+  try {
+    const sampleWidth = 144;
+    const sampleHeight = Math.max(96, Math.round(sampleWidth * (frames[0].height / frames[0].width)));
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) {
+      return {
+        points: [],
+        confidenceScore: 0,
+        failed: true,
+        method: 'pixel-motion',
+        notes: ['Canvas pixel access is unavailable; manual correction is ready.'],
+      };
+    }
+    canvas.width = sampleWidth;
+    canvas.height = sampleHeight;
+
+    const pixelFrames = bitmaps.map((bitmap) => {
+      throwIfAborted(signal);
+      context.clearRect(0, 0, sampleWidth, sampleHeight);
+      context.drawImage(bitmap, 0, 0, sampleWidth, sampleHeight);
+      return context.getImageData(0, 0, sampleWidth, sampleHeight);
+    });
+
+    const samples: DetectionSample[] = [];
+    for (let index = 1; index < pixelFrames.length; index += 1) {
+      samples.push(diffCenter(pixelFrames[index - 1], pixelFrames[index], sampleWidth, sampleHeight));
+    }
+
+    const fallbackX = sampleWidth * 0.5;
+    const fallbackY = sampleHeight * 0.62;
+    const rawPoints: MotionPoint[] = frames.map((frame, index) => {
+      const sample = index === 0 ? samples[0] : samples[index - 1] || samples[samples.length - 1];
+      const confidence = sample?.confidence ?? 0;
+      const x = confidence > 0.04 ? sample.x : fallbackX;
+      const y = confidence > 0.04 ? sample.y : fallbackY - index * (sampleHeight * 0.035);
+      return {
+        x: (x / sampleWidth) * frame.width,
+        y: (y / sampleHeight) * frame.height,
+        t: frameProgress(frame, index, frames, videoDuration),
+        confidence,
+      };
+    });
+
+    const normalized = normalizeDetectedPoints(rawPoints, frames[0].width, frames[0].height);
+    const confidenceScore = confidenceFromPoints(normalized);
+    const failed = confidenceScore < 0.24;
+
     return {
-      points: [],
-      confidenceScore: 0,
-      failed: true,
+      points: normalized,
+      confidenceScore,
+      failed,
       method: 'pixel-motion',
-      notes: ['Canvas pixel access is unavailable; manual correction is ready.'],
+      notes: [
+        'Fallback detection used frame-to-frame pixel motion.',
+        failed
+          ? 'Automatic detection failed confidence threshold. Use manual correction.'
+          : 'Automatic motion path passed confidence threshold.',
+      ],
     };
+  } finally {
+    closeBitmaps(bitmaps);
   }
-  canvas.width = sampleWidth;
-  canvas.height = sampleHeight;
-
-  const pixelFrames = bitmaps.map((bitmap) => {
-    context.clearRect(0, 0, sampleWidth, sampleHeight);
-    context.drawImage(bitmap, 0, 0, sampleWidth, sampleHeight);
-    return context.getImageData(0, 0, sampleWidth, sampleHeight);
-  });
-  closeBitmaps(bitmaps);
-
-  const samples: DetectionSample[] = [];
-  for (let index = 1; index < pixelFrames.length; index += 1) {
-    samples.push(diffCenter(pixelFrames[index - 1], pixelFrames[index], sampleWidth, sampleHeight));
-  }
-
-  const fallbackX = sampleWidth * 0.5;
-  const fallbackY = sampleHeight * 0.62;
-  const rawPoints: MotionPoint[] = frames.map((frame, index) => {
-    const sample = index === 0 ? samples[0] : samples[index - 1] || samples[samples.length - 1];
-    const confidence = sample?.confidence ?? 0;
-    const x = confidence > 0.04 ? sample.x : fallbackX;
-    const y = confidence > 0.04 ? sample.y : fallbackY - index * (sampleHeight * 0.035);
-    return {
-      x: (x / sampleWidth) * frame.width,
-      y: (y / sampleHeight) * frame.height,
-      t: frameProgress(frame, index, frames, videoDuration),
-      confidence,
-    };
-  });
-
-  const normalized = normalizeDetectedPoints(rawPoints, frames[0].width, frames[0].height);
-  const confidenceScore = confidenceFromPoints(normalized);
-  const failed = confidenceScore < 0.24;
-
-  return {
-    points: normalized,
-    confidenceScore,
-    failed,
-    method: 'pixel-motion',
-    notes: [
-      'Fallback detection used frame-to-frame pixel motion.',
-      failed
-        ? 'Automatic detection failed confidence threshold. Use manual correction.'
-        : 'Automatic motion path passed confidence threshold.',
-    ],
-  };
 }
 
 let poseLandmarkerPromise: Promise<PoseLandmarker> | null = null;
+let poseLandmarkerInstance: PoseLandmarker | null = null;
 
 function getPoseLandmarker() {
   poseLandmarkerPromise ??= (async () => {
     const vision = await FilesetResolver.forVisionTasks('/mediapipe/wasm');
-    return PoseLandmarker.createFromOptions(vision, {
+    const landmarker = await PoseLandmarker.createFromOptions(vision, {
       baseOptions: {
         modelAssetPath: '/models/pose_landmarker_full.task',
         delegate: 'CPU',
@@ -742,8 +754,20 @@ function getPoseLandmarker() {
       minPosePresenceConfidence: 0.24,
       minTrackingConfidence: 0.18,
     });
-  })();
+    poseLandmarkerInstance = landmarker;
+    return landmarker;
+  })().catch((error) => {
+    poseLandmarkerPromise = null;
+    throw error;
+  });
   return poseLandmarkerPromise;
+}
+
+export async function releasePoseLandmarker() {
+  const landmarker = poseLandmarkerInstance || (await poseLandmarkerPromise?.catch(() => null)) || null;
+  landmarker?.close();
+  poseLandmarkerInstance = null;
+  poseLandmarkerPromise = null;
 }
 
 function emptyPoseSample(): PoseFrameSample {
@@ -921,6 +945,34 @@ function inferDuration(frames: MotionFrame[]) {
   return frames.reduce((max, frame) => Math.max(max, frame.time), 0);
 }
 
+async function decodeFrames(frames: MotionFrame[], signal?: AbortSignal) {
+  throwIfAborted(signal);
+  const results = await Promise.allSettled(frames.map((frame) => decodeFrame(frame.dataUrl)));
+  const bitmaps: Array<ImageBitmap | HTMLImageElement> = [];
+  let decodeError: unknown;
+
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      bitmaps.push(result.value);
+    } else if (!decodeError) {
+      decodeError = result.reason;
+    }
+  }
+
+  if (decodeError) {
+    closeBitmaps(bitmaps);
+    throw decodeError;
+  }
+
+  try {
+    throwIfAborted(signal);
+    return bitmaps;
+  } catch (error) {
+    closeBitmaps(bitmaps);
+    throw error;
+  }
+}
+
 async function decodeFrame(dataUrl: string) {
   if ('createImageBitmap' in window) {
     const response = await fetch(dataUrl);
@@ -940,4 +992,13 @@ function closeBitmaps(bitmaps: Array<ImageBitmap | HTMLImageElement>) {
   bitmaps.forEach((bitmap) => {
     if ('close' in bitmap) bitmap.close();
   });
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  throw new DOMException('Motion processing was cancelled.', 'AbortError');
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
 }

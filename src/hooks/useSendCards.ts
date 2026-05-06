@@ -4,7 +4,7 @@ import type { SendCard } from '../types/klym';
 
 export function useSendCards() {
   const [sendCards, setSendCards] = useState<SendCard[]>(() =>
-    stripPrototypeCards(readJson<SendCard[]>(storageKeys.sendCards, [])),
+    stripPrototypeCards(readJson(storageKeys.sendCards, [], isSendCardArray)),
   );
 
   useEffect(() => writeJson(storageKeys.sendCards, sendCards), [sendCards]);
@@ -36,6 +36,27 @@ const prototypeProjectIds = new Set([
 ]);
 
 function stripPrototypeCards(cards: SendCard[]) {
-  if (cards.some((card) => prototypeProjectIds.has(card.projectId))) return [];
-  return cards;
+  return cards.filter((card) => !prototypeProjectIds.has(card.projectId));
+}
+
+function isSendCardArray(value: unknown): value is SendCard[] {
+  return Array.isArray(value) && value.every(isSendCard);
+}
+
+function isSendCard(value: unknown): value is SendCard {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.projectId === 'string' &&
+    typeof value.signatureId === 'string' &&
+    typeof value.createdAt === 'string' &&
+    typeof value.format === 'string' &&
+    typeof value.layout === 'string' &&
+    typeof value.style === 'string' &&
+    typeof value.reflection === 'string'
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

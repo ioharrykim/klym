@@ -58,6 +58,15 @@ export function MotionFlowScreen({
   const [notes, setNotes] = useState<string[]>([]);
   const [error, setError] = useState('');
   const preserveVideoUrlRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const processAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      processAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     setProjectId(quickMode ? '' : selectedProject?.id || projects[0]?.id || '');
@@ -91,6 +100,10 @@ export function MotionFlowScreen({
 
   async function processVideo() {
     if (!selectedFile) return;
+    processAbortRef.current?.abort();
+    const controller = new AbortController();
+    processAbortRef.current = controller;
+    const { signal } = controller;
     try {
       setState('extracting-frames');
       const extracted = await extractFramesFromVideo(selectedFile, {
@@ -99,15 +112,20 @@ export function MotionFlowScreen({
         quality: 0.86,
         trimStartRatio: 0.02,
         trimEndRatio: 0.98,
-        onProgress: (value) => setProgress(Math.round(value * 40)),
+        signal,
+        onProgress: (value) => {
+          if (canUpdateAfterAsync(isMountedRef, signal)) setProgress(Math.round(value * 40));
+        },
       });
       URL.revokeObjectURL(extracted.videoUrl);
+      if (!canUpdateAfterAsync(isMountedRef, signal)) return;
       setFrames(extracted.frames);
       setDuration(extracted.duration);
 
       setState('detecting-motion');
       setProgress(56);
-      const detection = await detectMotionFromFrames(extracted.frames, extracted.duration, environment);
+      const detection = await detectMotionFromFrames(extracted.frames, extracted.duration, environment, signal);
+      if (!canUpdateAfterAsync(isMountedRef, signal)) return;
       setNotes(detection.notes);
       setProgress(76);
 
@@ -119,6 +137,7 @@ export function MotionFlowScreen({
 
       setState('generating-signature');
       const composed = composeMotionPath(detection.points);
+      if (!canUpdateAfterAsync(isMountedRef, signal)) return;
       setReadySignature({
         projectId: project?.id,
         videoName: selectedFile.name,
@@ -145,8 +164,11 @@ export function MotionFlowScreen({
       setProgress(100);
       setState('signature-ready');
     } catch (err) {
+      if (isAbortError(err) || !isMountedRef.current) return;
       setError(err instanceof Error ? err.message : t('motion.videoFailed'));
       setState('failed');
+    } finally {
+      if (processAbortRef.current === controller) processAbortRef.current = null;
     }
   }
 
@@ -523,7 +545,7 @@ function ReadyStep({
     gymName: '',
     environment: signature.environment || 'indoor',
     wallName: '',
-    grade: 'V6',
+    grade: '',
     gradeMode: 'scale',
     gradeColor: undefined,
     notes: '',
@@ -605,7 +627,7 @@ function ReadyStep({
             <input
               value={quickDraft.displayName}
               onChange={(event) => updateQuick('displayName', event.target.value)}
-              placeholder="CONCRETE TRAVERSE"
+              placeholder={t('placeholder.projectName')}
               autoFocus
             />
           </label>
@@ -615,7 +637,7 @@ function ReadyStep({
               <input
                 value={quickDraft.gymName}
                 onChange={(event) => updateQuick('gymName', event.target.value)}
-                placeholder="THE CLIMB · SEONGSU"
+                placeholder={t('placeholder.gym')}
               />
             </label>
             <label>
@@ -623,7 +645,7 @@ function ReadyStep({
               <input
                 value={quickDraft.wallName}
                 onChange={(event) => updateQuick('wallName', event.target.value)}
-                placeholder="WALL 03"
+                placeholder={t('placeholder.wall')}
               />
             </label>
           </div>
@@ -696,7 +718,9 @@ function VideoMotionPreview({
 
   useEffect(() => {
     let raf = 0;
+    let cancelled = false;
     const tick = () => {
+      if (cancelled) return;
       const video = videoRef.current;
       if (video && Number.isFinite(video.duration) && video.duration > 0) {
         setProgress((video.currentTime % video.duration) / video.duration);
@@ -706,7 +730,10 @@ function VideoMotionPreview({
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
   return (
@@ -746,6 +773,14 @@ function keyFrameDataUrls(frames: MotionFrame[]) {
   ]
     .filter(Boolean)
     .map((frame) => frame.dataUrl);
+}
+
+function canUpdateAfterAsync(isMountedRef: { current: boolean }, signal: AbortSignal) {
+  return isMountedRef.current && !signal.aborted;
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
 }
 
 function detectMotionEvents(

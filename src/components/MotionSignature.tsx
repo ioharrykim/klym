@@ -10,6 +10,7 @@ import {
   smoothPath,
 } from '../lib/signature';
 import { tokens } from '../lib/tokens';
+import { useI18n } from '../lib/i18n';
 
 const VB_W = 280;
 const VB_H = 380;
@@ -43,6 +44,7 @@ export function MotionSignature({
   centerInView = false,
   className,
 }: MotionSignatureProps) {
+  const { t } = useI18n();
   const seedPath = data ? null : generateSeedPath(seed, VB_W, VB_H);
   const rawPoints = data ? scaledPoints(data.points, VB_W, VB_H) : seedPath?.points || [];
   const points = centerInView ? fitPointsToViewport(rawPoints, VB_W, VB_H, 0.12) : rawPoints;
@@ -58,7 +60,7 @@ export function MotionSignature({
       className={[className, animate && progress === undefined ? 'signature-animate' : ''].filter(Boolean).join(' ')}
       viewBox={`0 0 ${VB_W} ${VB_H}`}
       preserveAspectRatio="xMidYMid meet"
-      aria-label="Motion Signature"
+      aria-label={t('common.signature')}
     >
       <defs>
         <filter id="klymBlur" x="-50%" y="-50%" width="200%" height="200%">
@@ -122,13 +124,13 @@ export function MotionSignature({
       {showLabels && (
         <g className="signature-labels" fill={ink}>
           <text x="4" y="10">
-            TOP
+            {t('motion.labelTop')}
           </text>
           <text x="4" y={VB_H - 4}>
-            START
+            {t('common.start')}
           </text>
           <text x={VB_W - 52} y="10">
-            MOTION
+            {t('motion.labelMotion')}
           </text>
         </g>
       )}
