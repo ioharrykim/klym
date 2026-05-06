@@ -10,6 +10,14 @@
 - **모션 감지**: MediaPipe Pose Landmarker
 - **스타일링**: CSS (커스텀)
 
+## 런타임 모델 자산
+
+MediaPipe WASM과 Pose Landmarker 모델은 배포 번들 크기를 줄이기 위해 CDN에서 로드합니다.
+기본값은 아래와 같고, 필요하면 Vite 환경변수로 교체할 수 있습니다.
+
+- `VITE_MEDIAPIPE_WASM_BASE_URL`: `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm`
+- `VITE_POSE_LANDMARKER_MODEL_URL`: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task`
+
 ## 시작하기
 
 ### 사전 요구사항
@@ -52,8 +60,7 @@ src/
 └── main.tsx        # 엔트리 포인트
 
 public/
-├── models/         # MediaPipe 포즈 모델 (.task)
-└── mediapipe/wasm/ # MediaPipe WASM 바이너리
+└── klym-reference-card.png
 ```
 
 ## 주요 기능
