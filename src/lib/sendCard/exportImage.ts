@@ -1,10 +1,11 @@
 import { toPng, toCanvas } from 'html-to-image';
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer';
 import type { MotionPoint, MotionSignatureData, MotionSignatureStyle, SendCardFormat, SendCardTextTone } from '../../types/klym';
-import { clamp, fitPointsToViewport, motionPointAtProgress, partialSmoothPath, scaledPoints, smoothPath } from '../signature';
+import { clamp, fitPointsToViewport, partialSmoothPath, scaledPoints, smoothPath } from '../signature';
 
 const SIGNATURE_VB_W = 280;
 const SIGNATURE_VB_H = 380;
+const SEND_CARD_SIGNATURE_SCALE = 0.54;
 
 export function formatDimensions(format: SendCardFormat): { width: number; height: number } {
   switch (format) {
@@ -159,7 +160,7 @@ export async function exportElementAsVideo({
     ctx.drawImage(backgroundCanvas, 0, 0, targetWidth, targetHeight);
   }
 
-  const points = fitPointsToViewport(scaledPoints(signature.points, SIGNATURE_VB_W, SIGNATURE_VB_H), SIGNATURE_VB_W, SIGNATURE_VB_H, 0.12);
+  const points = fitPointsToViewport(scaledPoints(signature.points, SIGNATURE_VB_W, SIGNATURE_VB_H), SIGNATURE_VB_W, SIGNATURE_VB_H, 0.14);
   const videoDurationMs =
     backgroundVideo && Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0
       ? Math.min(Math.max(backgroundVideo.duration * 1000, 1400), 30000)
@@ -803,7 +804,7 @@ function drawSignatureProgressive(
   { targetWidth, targetHeight, accent, ink, style }: DrawOptions,
 ) {
   if (!points.length) return;
-  const scale = Math.min(targetWidth / SIGNATURE_VB_W, targetHeight / SIGNATURE_VB_H);
+  const scale = Math.min(targetWidth / SIGNATURE_VB_W, targetHeight / SIGNATURE_VB_H) * SEND_CARD_SIGNATURE_SCALE;
   const scaledW = SIGNATURE_VB_W * scale;
   const scaledH = SIGNATURE_VB_H * scale;
   const offsetX = (targetWidth - scaledW) / 2;
@@ -875,10 +876,9 @@ function drawSignatureProgressive(
   const head = visiblePoints[0];
   const tail = visiblePoints[visiblePoints.length - 1];
   drawStartMark(ctx, head, ink);
-  const cruxPoints = points.filter((point) => point.dyno);
-  const movingCrux = motionPointAtProgress(points, progress) || (progress >= 1 ? maxVelocityPoint(points) : undefined);
-  if (movingCrux && progress >= Math.max(0.08, (cruxPoints[0]?.t ?? 0) * 0.8)) {
-    drawCrux(ctx, movingCrux, accent, ink);
+  const cruxPoint = fixedCruxPoint(points);
+  if (shouldShowCrux(cruxPoint, progress)) {
+    drawCrux(ctx, cruxPoint, accent, ink);
   }
   if (progress >= 1) {
     drawEndMark(ctx, tail, accent);
@@ -959,8 +959,8 @@ function drawDataSignature(
   const head = visiblePoints[0];
   const tail = visiblePoints[visiblePoints.length - 1];
   drawStartMark(ctx, head, ink);
-  const movingPoint = motionPointAtProgress(points, progress) || tail;
-  if (progress > 0.1) drawDataCrux(ctx, movingPoint, accent, ink);
+  const cruxPoint = fixedCruxPoint(points);
+  if (cruxPoint && shouldShowCrux(cruxPoint, progress)) drawDataCrux(ctx, cruxPoint, accent, ink);
   if (progress >= 1) {
     drawEndMark(ctx, tail, accent);
   } else {
@@ -1144,6 +1144,14 @@ function maxVelocityPoint(points: MotionPoint[]) {
     if (!best || (point.velocity || 0) > (best.velocity || 0)) return point;
     return best;
   }, undefined);
+}
+
+function fixedCruxPoint(points: MotionPoint[]) {
+  return points.find((point) => point.dyno) || maxVelocityPoint(points);
+}
+
+function shouldShowCrux(point: MotionPoint | undefined, progress: number) {
+  return Boolean(point) && progress >= Math.max(0.08, (point?.t ?? 0) * 0.98);
 }
 
 function triggerDownload(blob: Blob, fileName: string) {

@@ -2139,6 +2139,8 @@ textarea:focus {
 
 .send-card {
   --card-pad: 16px;
+  --signature-width: 56%;
+  --signature-height: 54%;
   --ink: #f4f1ea;
   --accent: #ff5a1f;
   --muted: rgba(244, 241, 234, 0.55);
@@ -2167,6 +2169,8 @@ textarea:focus {
   height: 400px;
   --card-pad: 16px;
   --display-size: 13px;
+  --signature-width: 58%;
+  --signature-height: 53%;
 }
 
 .send-card-story {
@@ -2174,6 +2178,8 @@ textarea:focus {
   height: 426px;
   --card-pad: 14px;
   --display-size: 12px;
+  --signature-width: 64%;
+  --signature-height: 49%;
 }
 
 .send-card-poster {
@@ -2276,7 +2282,11 @@ textarea:focus {
 
 .send-card-signature {
   position: absolute;
-  inset: 0;
+  left: 50%;
+  top: 50%;
+  width: var(--signature-width);
+  height: var(--signature-height);
+  transform: translate(-50%, -50%);
   z-index: 2;
   pointer-events: none;
 }

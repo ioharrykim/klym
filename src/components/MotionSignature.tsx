@@ -4,7 +4,6 @@ import {
   clamp,
   fitPointsToViewport,
   generateSeedPath,
-  motionPointAtProgress,
   partialSmoothPath,
   scaledPoints,
   smoothPath,
@@ -51,7 +50,8 @@ export function MotionSignature({
   const path = data && !centerInView ? data.svgPath : smoothPath(points);
   const visiblePath = progress === undefined ? path : partialSmoothPath(points, progress);
   const cruxPoints = points.filter((point) => point.dyno);
-  const cruxPoint = activeSpotlightPoint(points, cruxPoints, progress);
+  const cruxPoint = fixedCruxPoint(points, cruxPoints);
+  const showCrux = shouldShowCrux(cruxPoint, progress);
   const minorPoint = points.find((point) => 'minor' in point && point.minor);
   const baseStroke = 2.4 * strokeScale;
 
@@ -76,7 +76,7 @@ export function MotionSignature({
           ink={ink}
           accent={accent}
           baseStroke={baseStroke}
-          cruxPoint={cruxPoint}
+          cruxPoint={showCrux ? cruxPoint : undefined}
           animate={animate}
           progress={progress}
         />
@@ -89,7 +89,7 @@ export function MotionSignature({
           ink={ink}
           accent={accent}
           baseStroke={baseStroke}
-          cruxPoint={cruxPoint}
+          cruxPoint={showCrux ? cruxPoint : undefined}
           minorPoint={minorPoint}
           animate={animate}
           progress={progress}
@@ -103,7 +103,7 @@ export function MotionSignature({
           ink={ink}
           accent={accent}
           baseStroke={baseStroke}
-          cruxPoint={cruxPoint}
+          cruxPoint={showCrux ? cruxPoint : undefined}
           animate={animate}
           progress={progress}
         />
@@ -116,7 +116,7 @@ export function MotionSignature({
           ink={ink}
           accent={accent}
           baseStroke={baseStroke}
-          cruxPoint={cruxPoint}
+          cruxPoint={showCrux ? cruxPoint : undefined}
           animate={animate}
           progress={progress}
         />
@@ -221,7 +221,7 @@ function DataSignature({
         <rect x={points[points.length - 1].x - 4} y={points[points.length - 1].y - 4} width="8" height="8" fill="none" stroke={accent} />
       )}
       {progress !== undefined && visiblePoints.length > 1 && (
-        <circle cx={cruxPoint?.x ?? visiblePoints[visiblePoints.length - 1].x} cy={cruxPoint?.y ?? visiblePoints[visiblePoints.length - 1].y} r="2.2" fill={accent} />
+        <circle cx={visiblePoints[visiblePoints.length - 1].x} cy={visiblePoints[visiblePoints.length - 1].y} r="2.2" fill={accent} />
       )}
     </g>
   );
@@ -451,7 +451,12 @@ function maxVelocityPoint(points: MotionPoint[]) {
   }, undefined);
 }
 
-function activeSpotlightPoint(points: MotionPoint[], cruxPoints: MotionPoint[], progress?: number) {
-  if (progress !== undefined) return motionPointAtProgress(points, progress) || cruxPoints[0] || maxVelocityPoint(points);
+function fixedCruxPoint(points: MotionPoint[], cruxPoints: MotionPoint[]) {
   return cruxPoints[0] || maxVelocityPoint(points);
+}
+
+function shouldShowCrux(point?: MotionPoint, progress?: number) {
+  if (!point) return false;
+  if (progress === undefined) return true;
+  return progress >= Math.max(0.08, (point.t ?? 0) * 0.98);
 }
