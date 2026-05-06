@@ -11,6 +11,13 @@ import { normalizeDetectedPoints } from './normalize';
 import { confidenceFromPoints } from './path';
 import { clamp } from '../signature';
 
+const MEDIAPIPE_WASM_BASE_URL =
+  import.meta.env.VITE_MEDIAPIPE_WASM_BASE_URL ||
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm';
+const POSE_LANDMARKER_MODEL_URL =
+  import.meta.env.VITE_POSE_LANDMARKER_MODEL_URL ||
+  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task';
+
 export interface DetectionResult {
   points: MotionPoint[];
   confidenceScore: number;
@@ -742,10 +749,10 @@ let poseLandmarkerInstance: PoseLandmarker | null = null;
 
 function getPoseLandmarker() {
   poseLandmarkerPromise ??= (async () => {
-    const vision = await FilesetResolver.forVisionTasks('/mediapipe/wasm');
+    const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_BASE_URL);
     const landmarker = await PoseLandmarker.createFromOptions(vision, {
       baseOptions: {
-        modelAssetPath: '/models/pose_landmarker_full.task',
+        modelAssetPath: POSE_LANDMARKER_MODEL_URL,
         delegate: 'CPU',
       },
       runningMode: 'VIDEO',
